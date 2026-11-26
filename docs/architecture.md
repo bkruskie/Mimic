@@ -4,19 +4,19 @@ Nov 26, 2026 · @Brett
 
 ## Summary
 
-Mimic Box VTT should be built as a **host-anywhere, peer-to-peer platform**. The DM's desktop app is the authoritative game server and keeps campaign data on the DM's own disk. The only internet piece is a free connection broker that introduces devices to each other and stores nothing about anyone's game. Players and displays connect to the DM's host directly over encrypted WebRTC, falling back to a free relay only when a network blocks direct connections. Game traffic and files never pass through it in the normal case, so Mimic Box costs nothing to run, needs no accounts, and **users pay nothing**.
+Mimic Box VTT should be built as a **host-anywhere, peer-to-peer platform**. The DM's desktop app is the authoritative game server and keeps campaign data on the DM's own disk. Mimic Box runs no servers of its own. Devices introduce themselves to each other through existing free public networks (Nostr relays, with MQTT and BitTorrent trackers as fallbacks) using the open-source Trystero approach, then connect directly over encrypted WebRTC. Game traffic and files never pass through any third party, so Mimic Box costs nothing to run, needs no accounts, and **users pay nothing**.
 
 Decisions locked so far:
 
 | Decision | Choice | Why |
 | --- | --- | --- |
-| Hosting model | Local-first: the DM's computer hosts, each player's device stores their own games and characters, a free broker only connects them | Kit's local-first ownership with the Mimic Box brief's play-from-anywhere goal; no cloud accounts or cloud storage |
-| Cost | Zero, for users and for the project | Owner requirement. The only service, the connection broker, runs on a free tier with no payment method attached, so it cannot produce a bill, and it can be self-hosted |
-| Remote-first | WebRTC between devices, signalling in the cloud, free STUN/TURN fallback | Works across home routers and mobile data without port forwarding |
+| Hosting model | Local-first: the DM's computer hosts, each player's device stores their own games and characters, public signalling networks only introduce them | Kit's local-first ownership with the Mimic Box brief's play-from-anywhere goal; no cloud accounts or cloud storage |
+| Cost | Zero, for users and for the project | Owner requirement. There is no Mimic Box service and no project account anywhere; the static apps are hosted free on GitHub Pages |
+| Remote-first | WebRTC between devices, signalling over public Nostr/MQTT/BitTorrent networks, public STUN, LAN and manual-code fallbacks (ADR 0004) | Works across most home routers and mobile data without port forwarding or any account |
 | Three experiences | DM Studio, Player Companion, Tabletop Display: separate apps, one protocol | Each gets its own server-filtered view; the display never receives DM data |
 | Modularity | Separate modules (Campaign, World, Characters, Tabletop, Encounters, Session, Assets, Rules, Identity) with their own tables, commands and events | Modules can be built, tested and replaced independently, and they set up a plugin system later |
 | Rule systems | D&D 5e (2024, SRD 5.2.1), Pathfinder 2e Remaster, Neon Odyssey (as a 5e extension) | Owner requirement. Two very different engines prove the rules boundary on day one |
-| Stack (provisional, confirmed in Phase 0) | Tauri 2 + Rust host core, TypeScript rules engine, React + TypeScript clients, PixiJS 8 maps, SQLite, Cloudflare Workers/Durable Objects/Pages | Matches the kit; every piece has a free tier or is open source |
+| Stack (provisional, confirmed in Phase 0) | Tauri 2 + Rust host core, TypeScript rules engine, React + TypeScript clients, PixiJS 8 maps, SQLite, Trystero-style public signalling, GitHub Pages | Matches the kit; every piece has a free tier or is open source |
 | Product focus | Character sheet first: a free, offline, installable sheet for D&D 5e (2024), then the table is built around it | Owner direction. It is useful on day one with no DM and no network, and it builds the rules engine, local storage and design system that everything else reuses |
 
 **The player app has three jobs:** taking part in live sessions, keeping a local copy of every game the player belongs to, and storing the characters the player creates. Characters belong to the player and live on their device; a campaign holds a working copy during play and sends accepted changes back.
@@ -87,14 +87,14 @@ The handoff kit and the Mimic Box project description share a goal, one home for
 | --- | --- | --- | --- |
 | Where the game lives | DM's computer, SQLite, local-first | "Cloud-based session hosting" | The authoritative host is a portable Rust core. It runs inside the DM desktop app by default, and later as a headless server the group can self-host (an always-on spare PC, a home server, a free VM). Same code, same data format. |
 | Accounts | Local DM profile, guest invites | "User accounts and authentication" | No cloud accounts. Each device creates its own identity key on first run, the player app keeps the list of games the player has joined, and a QR code links a second device. Nothing to sign up for. |
-| Scale | One host per campaign | "Multiple simultaneous campaigns and sessions", "scalability" | Scale comes free: every DM's machine is its own server. The cloud only brokers connections, so its load is a few messages per join, not per move. |
+| Scale | One host per campaign | "Multiple simultaneous campaigns and sessions", "scalability" | Scale comes free: every DM's machine is its own server. Public networks only carry a few signalling messages per join, never game traffic. |
 | Community sharing | Out of scope for v1 | Long-term goal | Content packs are portable signed files from day one, so sharing later is a distribution problem, not a format change. |
 | Rules | D&D first, rules modular | Multiple systems later | Owner now requires D&D, Pathfinder and Neon Odyssey, so the rules boundary is a Phase-0 deliverable, not a later refactor. |
 
 Risks, highest first:
 
-1. **Remote connectivity.** The whole product depends on a phone on mobile data reaching a laptop behind a home router. WebRTC with STUN handles most networks; strict NATs and UDP-blocking networks need TURN over TLS on port 443. This is spiked first, on real separate networks.
-2. **"Free forever" at growth.** Free tiers have daily and monthly caps and can change. The design keeps relayed bytes rare, caps usage so it fails closed instead of billing, and keeps every cloud piece self-hostable.
+1. **Remote connectivity.** The whole product depends on a phone on mobile data reaching a laptop behind a home router. WebRTC with STUN handles most networks; strict NATs and UDP-blocking networks need a relay, and Mimic Box runs none. Those players switch networks, play on the DM's local network, or use a relay the group runs itself. This is spiked first, on real separate networks, and the share of failures is measured.
+2. **Depending on public networks.** Signalling uses relays and trackers run by others, which can go offline or rate-limit. Mimic Box tries several at once across more than one network, lets the DM add their own, and always offers the local-network and manual-code paths.
 3. **Secret leakage.** Fog of war that hides an image the player already downloaded is not secrecy. Hidden map areas are delivered as tiles only once revealed.
 4. **Three rules engines.** Pathfinder 2e (three actions, four degrees of success, valued conditions) differs from 5e enough to break a 5e-shaped model. Both are modelled in Phase 0 before the character schema is fixed.
 5. **Neon Odyssey licensing.** It is a 5e (2024) supplement from Avantris Entertainment, crowdfunded in 2026 and estimated to deliver in Q4 2027. Its rules text is proprietary, so Mimic Box can ship its mechanics engine but not its content without a licence (see Open decisions).
@@ -127,11 +127,11 @@ The Session module is the only one that knows a game is live. Every other module
 
 ## System architecture
 
-Every device talks to one authoritative host, and the cloud only introduces them. The DM's machine runs the host core and the DM's own windows. Players and remote displays load a static web app and open an encrypted peer-to-peer channel to that host.
+Every device talks to one authoritative host, and public signalling networks only introduce them. The DM's machine runs the host core and the DM's own windows. Players and remote displays load a static web app and open an encrypted peer-to-peer channel to that host.
 
-*Diagram: system topology (DM host, free broker, players). See the live doc: https://claude.ai/artifact/8zvVCJ6iUVejZxPU7AXyXB*
+*Diagram: system topology (DM host, signalling, players). See the live doc: https://claude.ai/artifact/8zvVCJ6iUVejZxPU7AXyXB. It was drawn with a Cloudflare broker, which ADR 0004 replaces with public signalling networks.*
 
-Game data flows only along the accent lines, encrypted between each device and the DM's host. The broker only helps devices find each other, and the dashed relay carries traffic only when a network blocks a direct path.
+Game data flows only between each device and the DM's host, encrypted. Public signalling networks only help devices find each other, and see only encrypted introductions.
 
 ### The three experiences
 
@@ -145,32 +145,33 @@ The display is not a mirror. It is a separate client with its own credential and
 
 ### How a player reaches the host
 
-1. When the DM starts hosting, the host opens one outbound connection to the signalling service and registers its session route. No router ports are opened.
-2. The DM shares a link such as `mimicbox.pages.dev/j/7KQ-M4P#k=…` or a QR code. The part after `#` never leaves the player's browser; it carries the invite secret and the host's certificate fingerprint.
-3. The player's browser loads the Companion from the static site and asks the signalling service to connect it to that route. Signalling relays only the WebRTC offer, answer and network candidates.
-4. The browser checks that the host's certificate matches the fingerprint from the link, so even a compromised signalling server cannot impersonate the host.
+1. When the DM starts hosting, the host derives a room ID from the session's invite key and listens for joiners on several public signalling relays at once. No router ports are opened and nothing is registered anywhere.
+2. The DM shares a link such as `bkruskie.github.io/Mimic/#join=…` or a QR code. The part after `#` never leaves the player's browser; it carries the room key, the invite secret and the host's certificate fingerprint.
+3. The player's browser loads the Companion from the static site, joins the same room on the same relays, and exchanges the WebRTC offer, answer and network candidates with the host. These messages are encrypted with the room key, so relay operators see only that two devices met, their IP addresses and the timing.
+4. The browser checks that the host's certificate matches the fingerprint from the link, so even a hostile relay cannot impersonate the host.
 5. Inside the encrypted channel the player presents the invite secret. The host checks it, binds the player to a membership and character, and sends a filtered snapshot.
 
-Connection paths are tried in order: same-network address, direct internet via free STUN, then TURN over UDP, then TURN over TLS on port 443 for networks that block everything else. WebRTC encrypts end to end, so a TURN relay sees only volume and timing, not game data.
+Connection paths are tried in order: same-network address, then direct internet using public STUN servers (free, no account). There is no hosted relay. If no direct path works, the player sees a plain explanation and three ways forward: switch network (for example from mobile data to home Wi-Fi), join on the DM's local network, or use a relay the group runs itself (a TURN address is a setting).
+
+When public signalling is unreachable, two fallbacks need nothing on the internet beyond the two devices:
+
+- **Local network**: the host serves the Companion itself on the home network and players join from a QR code over a plain local WebSocket (Phase 4, with secure-context limits documented). No internet needed at all.
+- **Manual codes**: the DM and player trade connection codes by QR code or by pasting them into any chat app. Slow, but it depends on nothing.
 
 Each connection opens four channels: **control** (reliable, ordered: auth, commands, acknowledgements), **state** (reliable, ordered: the audience's event stream), **live** (unreliable: cursor pings, drag previews, measuring lines that can be dropped), and **assets** (reliable: chunked file transfer).
 
-When the internet is down but players are in the room, the host serves the Companion itself on the local network and players join from a QR code over a plain local WebSocket (Phase 4, with secure-context limits documented).
+### What runs on the internet
 
-### What the free cloud does, and its limits
-
-| Piece | Runs on | Free allowance | Mimic Box's load | When the cap is hit |
+| Piece | Runs on | Cost | Mimic Box's load | If it fails |
 | --- | --- | --- | --- | --- |
-| Web apps (Companion, Display, site) | Cloudflare Pages | Static requests and bandwidth unlimited ([Cloudflare](https://developers.cloudflare.com/pages/functions/pricing)) | Every page load | Not applicable |
-| Signalling and host presence | Workers + SQLite Durable Objects with WebSocket hibernation | 100,000 requests per day; incoming WebSocket messages count 20:1; 5 GB storage ([pricing](https://developers.cloudflare.com/durable-objects/platform/pricing), [limits](https://developers.cloudflare.com/durable-objects/platform/limits)) | Tens of messages per join; idle hosts hibernate | Requests fail with an error, no bill. New joins wait; live sessions keep running because play is peer to peer |
-| STUN | stun.cloudflare.com | Free and unlimited ([TURN FAQ](https://developers.cloudflare.com/realtime/turn/faq/)) | Every connection | Not applicable |
-| TURN fallback | Cloudflare Realtime TURN | First 1,000 GB per month free, then $0.05/GB ([pricing](https://developers.cloudflare.com/realtime/pricing/)) | Only players whose network blocks direct paths | Mimic Box stops issuing TURN credentials before the allowance; affected players see a clear message and the DM can point Mimic Box at a self-hosted relay |
-
-The account that runs these is the project's own free Cloudflare account, with no payment method attached, so an overage cannot turn into a charge. Every service has a self-host path (a small Docker image for signalling plus coturn for TURN) and the relay address is a setting, never hard-coded. Cloudflare Quick Tunnels were considered and rejected for production: they are documented as testing-only, with no uptime guarantee and a 200 in-flight request cap ([Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)). They remain useful for the Phase 0 separate-network test.
+| Web apps (Companion, Display, site) | GitHub Pages | Free for public repositories | Every page load; the app is cached offline after the first | Installed apps keep working; new players load from any static host or the DM's local network |
+| Signalling | Public Nostr relays (default), MQTT brokers and BitTorrent trackers (fallbacks), through a Trystero-compatible client ([Trystero](https://github.com/dmotz/trystero)) | Free, no account | A handful of encrypted messages per join | Several relays are used at once; if all fail, local network or manual codes |
+| STUN | Public STUN servers | Free, no account | Every connection | Several servers are listed; same-network connections need none |
+| Relay (TURN) | None hosted. Optional: one the group runs | Free if self-run | Only players whose network blocks direct paths | The player is told why and offered the three ways forward above |
 
 ## Backend architecture
 
-The backend is one Rust host core that runs inside the desktop app or as a headless server, plus one small connection broker. All game logic lives in the host core; the cloud never sees game content.
+The backend is one Rust host core that runs inside the desktop app or as a headless server. There is no other backend: all game logic lives in the host core, and nothing on the internet sees game content.
 
 ### Host core: Rust workspace
 
@@ -227,7 +228,7 @@ Every device stores as much as it can locally. The DM's computer is the master c
 | Character vault | Every character the player creates (the home copy), across all campaigns, exportable as `.mimicbox-character` files and offered when joining a new campaign (DM approves the import) | IndexedDB, files | The player. A campaign uses a working copy during play, and accepted changes flow back to the vault |
 | Display device | Asset cache and its last layout | Same as player | Cache |
 | Headless host (optional) | Same as the DM computer | SQLite + files | Master copy while it hosts |
-| Cloud | Only the routes of hosts online right now, deleted when they go offline. No accounts, no campaign content | Durable Objects | None |
+| Internet | Nothing. Public signalling relays briefly carry encrypted introductions and keep no Mimic Box data | — | None |
 
 Assets are content-addressed: a 20 MB battle map crosses the network once per device, ever, and later sessions only check hashes. Players can open their character sheet, journal and handouts while offline; changes they make offline queue as commands and are submitted on reconnect, where the host accepts or rejects them against the current revision.
 
@@ -235,12 +236,9 @@ Browsers may clear site storage under pressure, and iOS is stricter for sites no
 
 Backups use the same idea: a `.mimicboxbak` archive with a manifest, schema version and checksums, written to any folder the DM picks. Pointing it at a folder that already syncs to their own Dropbox, OneDrive, Google Drive or iCloud gives free off-site backup without Mimic Box storing anything.
 
-### Cloud services
+### Signalling
 
-One Cloudflare Worker exposes two small surfaces and stores nothing permanent:
-
-- `/signal`: one Durable Object per live session route holds the host's hibernating WebSocket and relays offers and candidates. It forgets the route when the host goes offline.
-- `/relay-credentials`: short-lived TURN credentials, issued only after a direct connection fails, against a per-session and monthly byte budget.
+The host and the Companion share one signalling module that speaks the Trystero room protocol over several public relays at once, with the room key from the invite link. Whether the Rust host implements that protocol natively (the relays speak plain WebSocket and JSON) or runs it in the desktop app's web view is decided in the Phase 0 connectivity spike. Relay lists are settings, so a group can add its own.
 
 There is no sign-up anywhere. Every device, DM or player, creates an identity key pair on first run. Invites bind a member to that key, so the same device rejoins automatically, and a QR code from an existing device links a second one.
 
@@ -258,12 +256,9 @@ mimicbox/
     display/       Tabletop Display: small read-only bundle, no editing code
     site/          Landing page and help docs (static)
   crates/          Rust host core, modules, rules engine, rulesets (see Backend)
-  cloud/
-    edge/          Cloudflare Worker: signalling and relay credentials only
-    selfhost/      Docker image: signalling server + coturn config
   packages/
     protocol/      Generated TypeScript types and validators from mimicbox-protocol
-    client-core/   Connection manager, transports, sync engine, offline queue
+    client-core/   Connection manager, transports, signalling, sync engine, offline queue
     local-store/   IndexedDB + OPFS persistence, storage-persistence requests, quotas
     map/           PixiJS 8 renderer, camera, grids, tools, fog, tile loader
     ruleset-dnd5e/ D&D 5e (2024) rules engine and SRD content (TypeScript)
@@ -420,9 +415,9 @@ Conventions for every table: UUIDv7 `id`; `created_at`, `updated_at`; a `rev` in
 
 Token positions, HP, conditions and initiative are persisted as they change, so a crash loses nothing and the next session starts where the last ended. Pings, cursors, drag previews and measuring lines travel only on the live channel and are never stored. A session ends with an automatic recap draft built from its event log, which the DM can edit and reveal.
 
-### Cloud records
+### Internet records
 
-There is no cloud database. The broker keeps only live SessionRoute records (route ID, host public key, connected since), deleted when the host disconnects.
+There is no cloud database and no Mimic Box server. Nothing about a campaign or a session is stored anywhere but on the devices that take part.
 
 ## Security and visibility
 
@@ -469,7 +464,8 @@ The kit's ten cases are kept and extended. Each runs against real projected payl
 - [ ] Guessed session code or route: reveals no campaign details
 - [ ] Fog reveal: tiles outside the revealed area never sent
 - [ ] Token walks into fog: removed from player views, position not leaked
-- [ ] Signalling server swaps in a fake host: player refuses, fingerprint mismatch
+- [ ] A signalling relay swaps in a fake host: player refuses, fingerprint mismatch
+- [ ] A signalling relay reads the introductions: they are encrypted with the room key
 - [ ] Backup restore: campaign, assets and references restored and checksums match
 
 ## Implementation roadmap
@@ -486,7 +482,7 @@ Each spike answers one risky question with a throwaway prototype and records the
 
 1. **Rules spike (leads)**: model one 5e attack, one PF2e strike with four degrees of success, and one valued condition behind the plugin contract; done in TypeScript (ADR 0001); the remaining check is running the same ruleset inside the Rust host's embedded JavaScript engine in Phase 3.
 2. **Storage spike**: request persistent storage and store 200 MB in OPFS on Android Chrome and iOS Safari, installed and not installed; record what survives a week and a low-storage event.
-3. **Connectivity spike (in parallel, not blocking the sheet)**: a Rust host using str0m and, separately, webrtc-rs `rtc`, behind a home router; a phone on mobile data; signalling through a Worker and Durable Object on the free plan. Record which path connects on at least three network types.
+3. **Connectivity spike (in parallel, not blocking the sheet)**: a Rust host using str0m and, separately, webrtc-rs `rtc`, behind a home router; a phone on mobile data; signalling through public Nostr relays with a Trystero-compatible client, in the browser and from the Rust host. Record which path connects on at least three network types, how often no direct path exists, and how fast joins are.
 4. **Desktop spike**: Tauri 2 opens a second window, moves it to an external monitor and goes full screen there (recent Tauri releases add `set_fullscreen_on_monitor`, [release notes](https://v2.tauri.app/release/tauri-runtime/v2.12.0/)), on Windows and macOS.
 5. **Repository**: monorepo, CI (lint, type check, tests on Windows, macOS, Linux), protocol code generation, ADRs 001 to 010.
 
@@ -505,7 +501,7 @@ Gate: a player builds a level 1 character on a phone in airplane mode, plays a r
 ### Phases 2 to 8
 
 - **Phase 2, character sheet depth**: homebrew items, feats and subclasses in forms; levels 6 to 20 and multiclassing; the Pathfinder 2e ruleset and sheet; desktop and tablet layouts; linking a second device. Gate: one app holds a 5e and a PF2e character, both matching reference sheets.
-- **Phase 3, connect to the table**: the kit's first vertical slice, with real characters. The DM desktop app hosts; players join by link or QR code from their sheet; the DM sees the party's sheets and shared rolls; a test token syncs; a separate display window shows only player-safe state; reconnects never repeat an action. Gate: the kit's definition of done, met on genuinely separate networks.
+- **Phase 3, connect to the table**: the kit's first vertical slice, with real characters. The DM desktop app hosts; players join by link or QR code from their sheet; the DM sees the party's sheets and shared rolls; a test token syncs; a separate display window shows only player-safe state; reconnects never repeat an action. Gate: the kit's definition of done, met on genuinely separate networks with no Mimic Box server.
 - **Phase 4, campaign and world**: campaign library, asset import, the world wiki with per-block visibility, journals and handouts, LAN fallback, backups and restore. Gate: a DM preps a world fully offline, and a backup restores on another computer.
 - **Phase 5, tabletop MVP**: maps, square, hex and gridless grids, layers, tokens with control rules, walls and doors, tiled fog reveal, measuring. Gate: players see only permitted content and move only their tokens; the phone benchmark passes.
 - **Phase 6, encounters and planning**: adventures, scenes, encounter builder, initiative, conditions pushed to sheets, combat log, session recap. Gate: a real session runs without external tools.
@@ -521,10 +517,11 @@ No decisions are waiting on the owner. Everything below the decided list is a re
 ### Decided
 
 - [x] **Neon Odyssey: wait for release** (Nov 26, 2026). No ruleset work and no licence outreach until its rules are published. Its text is never shipped without permission.
-- [x] **A DM hosts for $0** (Nov 26, 2026). Hosting needs no account, card, domain, server or subscription from the DM. The host runs on the DM's own computer; the connection broker, STUN and relay are shared free services run by the project; when the free relay allowance runs out, Mimic Box stops offering the relay rather than charging anyone. A DM can also host on the local network with no internet service at all, or run their own broker for free.
+- [x] **A DM hosts for $0** (Nov 26, 2026). Hosting needs no account, card, domain, server or subscription from the DM. The host runs on the DM's own computer; devices find each other through free public signalling networks and public STUN servers; there is no hosted relay and no Mimic Box service. A DM can also host on the local network with no internet service at all.
 - [x] **Desktop app ships unsigned** (Nov 26, 2026). Mimic Box is free and open source, so it pays for no signing certificate. Install instructions explain the "unknown developer" warning on Windows and macOS, and free open-source signing programmes can be applied for later.
 - [x] **Code licence: MIT** (Nov 26, 2026). The SRD content pack stays under CC-BY-4.0 with its attribution.
-- [x] **Hosting the sheet before Phase 3: GitHub Pages** (Nov 26, 2026). The character sheet is a static app, so it is published free from the existing GitHub repository; no Cloudflare account is needed yet. The shared Cloudflare account for the connection broker is set up in Phase 3, with a step-by-step guide, on a free plan with no payment method attached.
+- [x] **Hosting the sheet before Phase 3: GitHub Pages** (Nov 26, 2026). The character sheet is a static app, so it is published free from the existing GitHub repository; it stays there.
+- [x] **No Cloudflare, no project servers** (Nov 26, 2026). Devices meet through public signalling networks (Trystero approach), with local-network and manual-code fallbacks. Players on networks that block direct connections switch networks, play locally, or use a relay their group runs. See ADR 0004.
 
 ### Assumptions in force
 
@@ -545,10 +542,7 @@ No decisions are waiting on the owner. Everything below the decided list is a re
 ### Sources
 
 - Handoff kit: README\_FIRST, PRODUCT\_BRIEF, CLAUDE.md, ARCHITECTURE, DATA\_MODEL, NETWORKING, REQUIREMENTS, SECURITY, ROADMAP, UX\_WORKFLOWS, TECH\_DECISIONS, OPEN\_QUESTIONS, prompts 00 to 04
-- [Cloudflare Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing) and [limits](https://developers.cloudflare.com/durable-objects/platform/limits)
-- [Cloudflare Realtime pricing](https://developers.cloudflare.com/realtime/pricing/) and [TURN FAQ](https://developers.cloudflare.com/realtime/turn/faq/)
-- [Cloudflare Pages Functions pricing](https://developers.cloudflare.com/pages/functions/pricing)
-- [Cloudflare Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
+- [Trystero](https://github.com/dmotz/trystero): serverless WebRTC matchmaking over Nostr, MQTT and BitTorrent (MIT)
 - [D&D SRD 5.2.1](https://dndbeyond.com/srd)
 - [Paizo: Pathfinder Infinite and the ORC License](https://paizo.com/blog/pathfinder-infinite-and-the-orc-license)
 - Neon Odyssey: [EN World announcement](https://www.enworld.org/goto/post?id=9865783), [ICv2 funding report](https://icv2.com/articles/news/view/62562/neon-odyssey-rrtpg-funding-total-passes-both-cosmere-rpg-dungeon-crawler-carl-rpg), [Popverse feature list](https://www.thepopverse.com/gaming-kickstarter-ttrpg-legends-of-avantris-neon-odyssey)

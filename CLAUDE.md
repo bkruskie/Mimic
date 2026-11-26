@@ -4,7 +4,7 @@ Read `docs/architecture.md` before changing architecture, data models or the roa
 
 ## Product truths
 
-- Zero cost to use and to run. No accounts, no cloud database, no paid services. The only planned internet piece is a free connection broker that stores nothing.
+- Zero cost to use and to run. No accounts, no cloud database, no paid services. Mimic Box runs no servers: devices meet through public signalling networks and connect directly (ADR 0004).
 - Local-first. Characters belong to the player and live on their device. The DM's computer will host games (Phase 3).
 - Phase 1 is the character sheet: offline, installable, no DM and no network required.
 - Rules live behind the ruleset boundary (`packages/ruleset-*`). D&D 5e (2024) first; Pathfinder 2e and Neon Odyssey follow.

@@ -27,7 +27,7 @@ pnpm check        # type check, unit tests, production build
 pnpm test:e2e     # builds, then drives the app in Chrome on a phone-sized screen
 ```
 
-The production build in `apps/companion/dist` is a static site. Host it anywhere (Cloudflare Pages, GitHub Pages, a USB stick); it uses relative paths.
+The production build in `apps/companion/dist` is a static site. Host it anywhere (GitHub Pages, any static host, a USB stick); it uses relative paths.
 
 ## Repository
 

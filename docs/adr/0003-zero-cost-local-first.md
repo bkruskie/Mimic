@@ -11,7 +11,7 @@ The owner requires the application to cost nothing to use or to run, and to keep
 - No accounts and no cloud database. Each device creates its own identity key.
 - Player data (characters, notes, joined games) lives in the browser's IndexedDB and Origin Private File System; the app requests persistent storage and offers file export.
 - The DM's computer will be the master copy for campaigns.
-- The only internet service planned is a connection broker on Cloudflare's free tier (signalling plus TURN fallback), with no payment method attached and a self-host option. It stores no game data.
+- ~~The only internet service planned is a connection broker on Cloudflare's free tier.~~ Superseded by ADR 0004: Mimic Box runs no internet service at all.
 - The player app is a static site, hostable for free.
 
 ## Consequences
