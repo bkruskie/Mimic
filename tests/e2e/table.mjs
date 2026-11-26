@@ -271,10 +271,45 @@ try {
     const b = await dmToken.boundingBox();
     return b.x - box.x > 100 * k;
   }, "Alice's move shows on the DM's map");
+  // Alice measures three squares across.
+  await alice.page.getByRole("button", { name: "Measure" }).click();
+  const as = await aliceMap.locator(".map-surface").boundingBox();
+  await alice.page.mouse.move(as.x + 50 * ak, as.y + 50 * ak);
+  await alice.page.mouse.down();
+  await alice.page.mouse.move(as.x + 350 * ak, as.y + 150 * ak, { steps: 6 });
+  await alice.page.mouse.up();
+  check((await alice.page.getByRole("status").filter({ hasText: "ft" }).innerText()) === "15 ft", "measuring three squares across and one down reads 15 ft");
+  await alice.page.getByRole("button", { name: "Move my token" }).click();
   await alice.page.keyboard.press("Escape");
   await eventually(async () => (await display.locator(".display-map .map-surface > img").count()) === 1, "the display shows the revealed part of the map");
   check((await display.getByRole("button", { name: /Spy/ }).count()) === 0, "without the hidden Spy");
   await shot(display, "display-map");
+
+  // Walls and a door: exploring reveals what Wren can see, and the door holds back the rest until it opens.
+  // The help text changes with the tool, which can move the map: measure it again before each action.
+  const at = async (px, py) => {
+    const b = await dmSurface.boundingBox();
+    const kk = b.width / 1100;
+    return [b.x + px * kk, b.y + py * kk];
+  };
+  const drag = async (from, to) => {
+    await dm.page.mouse.move(...(await at(...from)));
+    await dm.page.mouse.down();
+    await dm.page.mouse.move(...(await at(...to)), { steps: 8 });
+    await dm.page.mouse.up();
+  };
+  await dm.page.getByRole("button", { name: "Draw walls" }).click();
+  await drag([450, 50], [450, 550]);
+  await dm.page.getByRole("button", { name: "Doors" }).click();
+  await dm.page.mouse.click(...(await at(450, 250)));
+  await dm.page.getByRole("checkbox", { name: "Reveal as the party explores" }).check();
+  await eventually(async () => /(\d+) of 66 squares revealed/.test(await text(dm.page)) && Number(/(\d+) of 66/.exec(await text(dm.page))[1]) >= 24, "exploring reveals the room Wren stands in");
+  const beyond = Number(/(\d+) of 66/.exec(await text(dm.page))[1]);
+  check(beyond <= 30, `but nothing past the wall (${beyond} of 66 squares)`);
+  await shot(dm.page, "dm-walls");
+  await dm.page.mouse.click(...(await at(450, 250))); // open the door
+  await eventually(async () => Number(/(\d+) of 66/.exec(await text(dm.page))[1]) > beyond, "opening the door lets Wren see through it");
+  await eventually(async () => (await display.locator(".display-map .map-surface > img").count()) > 2, "and the newly seen tiles reach the table display");
 
   // ----- The DM changes a player's sheet: damage, healing, conditions -----
   await dm.page.getByLabel("Amount for Wren Ashdown").fill("4");

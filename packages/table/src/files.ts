@@ -44,6 +44,9 @@ function readMap(m: unknown): MapScene | null {
     grid: { size: g.size, offsetX: g.offsetX, offsetY: g.offsetY },
     revealed: (Array.isArray(m.revealed) ? m.revealed : []).filter((i): i is number => Number.isInteger(i) && (i as number) >= 0),
     tokens: tokens.map((t) => ({ id: t.id, name: t.name.slice(0, 40), x: t.x, y: t.y, memberId: typeof t.memberId === "string" ? t.memberId : null, hidden: t.hidden === true, color: /^#[0-9a-f]{6}$/i.test(t.color) ? t.color : "#C9973F" })),
+    walls: (Array.isArray(m.walls) ? m.walls : []).filter((i): i is number => Number.isInteger(i) && (i as number) >= 0),
+    doors: (Array.isArray(m.doors) ? m.doors : []).filter((d): d is { index: number; open: boolean } => isRecord(d) && Number.isInteger(d.index) && typeof d.open === "boolean"),
+    explore: isRecord(m.explore) && typeof m.explore.on === "boolean" && num(m.explore.radius, 0, 60) ? { on: m.explore.on, radius: m.explore.radius } : { on: false, radius: 0 },
   };
 }
 

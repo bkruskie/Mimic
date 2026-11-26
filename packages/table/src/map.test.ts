@@ -116,3 +116,53 @@ describe("moving tokens", () => {
     expect(TILE_SIZE).toBe(512);
   });
 });
+
+describe("measuring, walls and exploration", async () => {
+  const { canSee, cycleDoor, distanceFeet, explore, partyVision, setExplore, setWalls } = await import("./index.js");
+  // A wall runs down column 4, rows 0 to 5, with a door square at row 2.
+  const walled = () => {
+    let c = campaign();
+    c = setWalls(c, "docks", [0, 1, 3, 4, 5].map((y) => ({ x: 4, y })), true);
+    return cycleDoor(c, "docks", 4, 2);
+  };
+
+  it("measures 5 feet a square, diagonals included", () => {
+    expect(distanceFeet({ x: 0, y: 0 }, { x: 3, y: 0 })).toBe(15);
+    expect(distanceFeet({ x: 0, y: 0 }, { x: 3, y: 2 })).toBe(15);
+  });
+
+  it("walls and closed doors block sight; an opened door lets it through", () => {
+    let c = walled();
+    const m = () => c.maps![0]!;
+    expect(canSee(m(), { x: 0, y: 2 }, { x: 3, y: 2 })).toBe(true);
+    expect(canSee(m(), { x: 0, y: 2 }, { x: 8, y: 2 })).toBe(false);
+    expect(canSee(m(), { x: 0, y: 2 }, { x: 4, y: 2 })).toBe(true); // you can see the door itself
+    c = cycleDoor(c, "docks", 4, 2); // open it
+    expect(canSee(m(), { x: 0, y: 2 }, { x: 8, y: 2 })).toBe(true);
+  });
+
+  it("reveals what the party sees as they move, and never hides it again", () => {
+    let c = setExplore(walled(), "docks", { on: true, radius: 0 });
+    const revealed = () => new Set(c.maps![0]!.revealed);
+    const cols = 11;
+    expect(revealed().has(0 * cols + 3)).toBe(true); // Wren at 0,0 sees across the room
+    expect(revealed().has(2 * cols + 8)).toBe(false); // but not past the wall
+    c = movePlayerToken(c, "alice", "wren", 3, 2)!;
+    c = cycleDoor(c, "docks", 4, 2); // the door opens
+    expect(revealed().has(2 * cols + 8)).toBe(true);
+    c = cycleDoor(c, "docks", 4, 2); // closed again: what was seen stays revealed
+    expect(revealed().has(2 * cols + 8)).toBe(true);
+    expect(explore(c, "docks")).toBe(c);
+  });
+
+  it("limits vision to a radius when set", () => {
+    const c = setExplore(campaign(), "docks", { on: true, radius: 2 });
+    expect(Math.max(...partyVision(c.maps![0]!).map((i) => i % 11))).toBe(2);
+  });
+
+  it("never sends walls or doors to players", () => {
+    const wire = JSON.stringify(publicMap(revealAll(walled(), "docks", true).maps![0]!, "alice"));
+    expect(wire).not.toContain("walls");
+    expect(wire).not.toContain("doors");
+  });
+});
