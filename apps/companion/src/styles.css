@@ -1405,3 +1405,10 @@ details.feature[open] {
   font-size: var(--t-lg);
   color: var(--tongue);
 }
+.token.acting {
+  border-color: var(--brass);
+  box-shadow:
+    0 0 0 3px var(--brass),
+    0 0 18px 4px rgba(201, 151, 63, 0.7);
+  z-index: 1;
+}

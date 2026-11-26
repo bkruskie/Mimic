@@ -21,15 +21,18 @@ interface Props {
   onMove?: (t: Token, x: number, y: number) => void;
   onPaint?: (cells: { x: number; y: number }[], tool: PaintTool) => void;
   onDoor?: (x: number, y: number) => void;
-  /** The DM's view: walls and doors drawn on the map. */
+  /** The DM's view: walls drawn on the map. */
   walls?: ReadonlySet<number>;
-  doors?: { index: number; open: boolean }[];
+  /** Doors drawn on the map. With `onDoor` in the view tool, tapping one opens or closes it. */
+  doors?: { x: number; y: number; open: boolean }[];
+  /** The token whose turn it is. */
+  activeTokenId?: string | null;
   /** Fit the whole map in the box instead of its width (the table display). */
   fit?: "width" | "contain";
   label: string;
 }
 
-export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove = () => false, onMove, onPaint, onDoor, walls, doors, fit = "width", label }: Props) {
+export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove = () => false, onMove, onPaint, onDoor, walls, doors, activeTokenId = null, fit = "width", label }: Props) {
   const [ruler, setRuler] = useState<{ from: { x: number; y: number }; to: { x: number; y: number } } | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const surface = useRef<HTMLDivElement>(null);
@@ -80,6 +83,11 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
     if (tool === "door" && onDoor) {
       const c = cellAt(e);
       onDoor(c.x, c.y);
+      return;
+    }
+    if (tool === "view" && onDoor) {
+      const c = cellAt(e);
+      if (doors?.some((d) => d.x === c.x && d.y === c.y)) onDoor(c.x, c.y);
       return;
     }
     if (!painting || !onPaint) return;
@@ -144,10 +152,10 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
               ))}
             {doors?.map((d) => (
               <rect
-                key={`d${d.index}`}
+                key={`d${d.x}:${d.y}`}
                 className={d.open ? "door open" : "door"}
-                x={offsetX + (d.index % cols) * size + size * 0.15}
-                y={offsetY + Math.floor(d.index / cols) * size + size * 0.15}
+                x={offsetX + d.x * size + size * 0.15}
+                y={offsetY + d.y * size + size * 0.15}
                 width={size * 0.7}
                 height={size * 0.7}
               />
@@ -171,8 +179,8 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
               <button
                 key={t.id}
                 type="button"
-                className={`token ${t.hidden ? "hidden" : ""} ${movable ? "movable" : ""}`}
-                aria-label={`${t.name}${t.hidden ? " (hidden)" : ""}`}
+                className={`token ${t.hidden ? "hidden" : ""} ${movable ? "movable" : ""} ${t.id === activeTokenId ? "acting" : ""}`}
+                aria-label={`${t.name}${t.hidden ? " (hidden)" : ""}${t.id === activeTokenId ? ", acting now" : ""}`}
                 title={t.name}
                 style={{ left: (cx - size * 0.42) * scale, top: (cy - size * 0.42) * scale, width: size * 0.84 * scale, height: size * 0.84 * scale, background: t.color, fontSize: Math.max(10, size * 0.32 * scale) }}
                 onPointerDown={(e) => {

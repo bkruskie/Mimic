@@ -288,6 +288,7 @@ try {
   // Walls and a door: exploring reveals what Wren can see, and the door holds back the rest until it opens.
   // The help text changes with the tool, which can move the map: measure it again before each action.
   const at = async (px, py) => {
+    await dm.page.getByRole("img", { name: "docks, as you see it" }).scrollIntoViewIfNeeded();
     const b = await dmSurface.boundingBox();
     const kk = b.width / 1100;
     return [b.x + px * kk, b.y + py * kk];
@@ -310,6 +311,35 @@ try {
   await dm.page.mouse.click(...(await at(450, 250))); // open the door
   await eventually(async () => Number(/(\d+) of 66/.exec(await text(dm.page))[1]) > beyond, "opening the door lets Wren see through it");
   await eventually(async () => (await display.locator(".display-map .map-surface > img").count()) > 2, "and the newly seen tiles reach the table display");
+
+  // A door next to Wren (she stands at column 1, row 0): Alice opens it from her sheet.
+  await dm.page.mouse.click(...(await at(250, 150)));
+  const dmDoors = dm.page.getByRole("img", { name: "docks, as you see it" }).locator(".map-overlay .door.open");
+  const openBefore = await dmDoors.count();
+  await alice.page.getByRole("button", { name: "Map", exact: true }).click();
+  await eventually(async () => (await aliceMap.locator(".map-overlay .door").count()) >= 1, "Alice sees the door next to her");
+  const ab = await aliceMap.locator(".map-surface").boundingBox();
+  const ak2 = ab.width / 1100;
+  await alice.page.mouse.click(ab.x + 250 * ak2, ab.y + 150 * ak2);
+  await eventually(async () => (await dmDoors.count()) === openBefore + 1, "Alice opens it from her sheet and the DM's map shows it open");
+
+  // Turns light up the acting token.
+  await alice.page.keyboard.press("Escape");
+  await dm.page.getByRole("button", { name: "Reveal all" }).click();
+  await dm.page.getByRole("button", { name: "Start combat" }).click();
+  await dm.page.getByLabel("Creature", { exact: true }).fill("Ogre");
+  await dm.page.getByLabel("Init bonus").fill("40");
+  await dm.page.getByRole("button", { name: "Add and roll" }).click();
+  await dm.page.getByRole("button", { name: "First turn" }).click();
+  await eventually(async () => (await display.getByRole("button", { name: "Ogre, acting now" }).count()) === 1, "the display lights up the Ogre's token on its turn");
+  await dm.page.getByRole("button", { name: "Next turn" }).click();
+  await alice.page.getByRole("button", { name: "Map", exact: true }).click();
+  await eventually(async () => (await aliceMap.getByRole("button", { name: "Wren Ashdown, acting now" }).count()) === 1, "and Wren's on hers");
+  await shot(alice.page, "alice-map-turn");
+  await shot(display, "display-map-turn");
+  await alice.page.keyboard.press("Escape");
+  await dm.page.getByRole("region", { name: "Combat" }).getByRole("button", { name: "End combat" }).click();
+  await dm.page.getByRole("button", { name: "End combat" }).first().click();
 
   // ----- The DM changes a player's sheet: damage, healing, conditions -----
   await dm.page.getByLabel("Amount for Wren Ashdown").fill("4");

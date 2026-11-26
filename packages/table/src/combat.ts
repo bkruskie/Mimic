@@ -15,6 +15,8 @@ export interface Combatant {
   hidden: boolean;
   /** DM-only hit points for creatures; player characters' HP live on their sheets. */
   hp: { current: number; max: number } | null;
+  /** The creature's token on the map, when it has one. Player characters use their own token. */
+  tokenId?: string | null;
 }
 
 export interface Combat {
@@ -119,4 +121,15 @@ export function publicCombat(campaign: HostCampaign): PublicCombat | null {
     turnId: visible.some((c) => c.id === combat.turnId) ? combat.turnId : null,
     order: visible.map((c) => ({ id: c.id, name: c.name, initiative: c.initiative, memberId: c.memberId })),
   };
+}
+
+/** The map token of whoever's turn it is: a player's own token, or the creature's linked token. */
+export function actingTokenId(campaign: HostCampaign): string | null {
+  const combat = campaign.combat;
+  const acting = combat?.combatants.find((c) => c.id === combat.turnId);
+  if (!acting) return null;
+  const map = (campaign.maps ?? []).find((m) => m.id === campaign.activeMapId);
+  if (!map) return null;
+  if (acting.memberId) return map.tokens.find((t) => t.memberId === acting.memberId)?.id ?? null;
+  return acting.tokenId && map.tokens.some((t) => t.id === acting.tokenId) ? acting.tokenId : null;
 }

@@ -47,6 +47,8 @@ export function DisplayApp() {
             map={view.map}
             fit="contain"
             tokens={view.map.tokens}
+            doors={view.map.doors ?? []}
+            activeTokenId={view.map.activeTokenId ?? null}
             tiles={view.map.tiles.flatMap((t) => {
               const url = tiles.get(`${view.map!.id}:${t.tx}:${t.ty}:${t.version}`);
               return url ? [{ tx: t.tx, ty: t.ty, url }] : [];

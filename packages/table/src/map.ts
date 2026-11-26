@@ -53,6 +53,10 @@ export interface PublicMap {
   /** Tiles they may have, with a version that changes when the reveal inside the tile changes. */
   tiles: { tx: number; ty: number; version: string }[];
   tokens: Token[];
+  /** Doors on revealed squares: players can see them, and open or close the ones next to their token. */
+  doors: { x: number; y: number; open: boolean }[];
+  /** The token whose turn it is in combat, if the audience can see it. */
+  activeTokenId: string | null;
 }
 
 export interface Rect {
@@ -109,7 +113,7 @@ export function tilePlan(m: MapScene, tx: number, ty: number): { send: boolean; 
   return { send: open.length > 0, cover, version: open.join(".") };
 }
 
-export function publicMap(m: MapScene, viewer: string | null): PublicMap {
+export function publicMap(m: MapScene, viewer: string | null, activeTokenId: string | null = null): PublicMap {
   const tiles: PublicMap["tiles"] = [];
   for (let ty = 0; ty < tileRows(m); ty++) {
     for (let tx = 0; tx < tileColumns(m); tx++) {
@@ -119,7 +123,21 @@ export function publicMap(m: MapScene, viewer: string | null): PublicMap {
   }
   // Tokens on revealed squares, never hidden ones; a player always sees their own token.
   const tokens = m.tokens.filter((t) => (viewer !== null && t.memberId === viewer) || (!t.hidden && isRevealed(m, t.x, t.y)));
-  return { id: m.id, name: m.name, width: m.width, height: m.height, grid: m.grid, tiles, tokens };
+  const cols = columns(m);
+  const doors = (m.doors ?? [])
+    .map((d) => ({ x: d.index % cols, y: Math.floor(d.index / cols), open: d.open }))
+    .filter((d) => isRevealed(m, d.x, d.y));
+  return {
+    id: m.id,
+    name: m.name,
+    width: m.width,
+    height: m.height,
+    grid: m.grid,
+    tiles,
+    tokens,
+    doors,
+    activeTokenId: activeTokenId && tokens.some((t) => t.id === activeTokenId) ? activeTokenId : null,
+  };
 }
 
 // ---------- changes ----------
@@ -273,4 +291,18 @@ export function cycleDoor(c: HostCampaign, mapId: string, x: number, y: number):
     };
   });
   return explore(next, mapId);
+}
+
+/**
+ * A player opens or closes a door. Allowed only on the map in play, for a door on a revealed square that is next to
+ * (or under) the player's own token. Returns null when refused.
+ */
+export function togglePlayerDoor(c: HostCampaign, memberId: string, x: number, y: number): HostCampaign | null {
+  const m = activeMap(c);
+  if (!m || !Number.isInteger(x) || !Number.isInteger(y)) return null;
+  const i = y * columns(m) + x;
+  const door = (m.doors ?? []).find((d) => d.index === i);
+  const own = m.tokens.find((t) => t.memberId === memberId);
+  if (!door || !own || !isRevealed(m, x, y) || Math.max(Math.abs(own.x - x), Math.abs(own.y - y)) > 1) return null;
+  return explore(withMap(c, m.id, (s) => ({ ...s, doors: (s.doors ?? []).map((d) => (d.index === i ? { ...d, open: !d.open } : d)) })), m.id);
 }

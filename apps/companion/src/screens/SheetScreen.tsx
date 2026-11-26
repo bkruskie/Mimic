@@ -281,10 +281,13 @@ export function SheetScreen({ id }: { id: string }) {
             map={table.map}
             tiles={table.mapTiles}
             tokens={table.map.tokens}
+            doors={table.map.doors ?? []}
+            activeTokenId={table.map.activeTokenId ?? null}
+            onDoor={mapTool === "view" ? (x, y) => table.toggleDoor(x, y) : undefined}
             canMove={(t) => t.memberId !== null && t.memberId === table.memberId}
             onMove={(t, x, y) => table.moveToken(t.id, x, y)}
           />
-          <p className="muted small">{mapTool === "measure" ? "Drag from one square to another. Diagonal steps count 5 feet." : "Drag your token to move. You see only what your DM has revealed."}</p>
+          <p className="muted small">{mapTool === "measure" ? "Drag from one square to another. Diagonal steps count 5 feet." : "Drag your token to move. Tap a door next to your token to open or close it. You see only what your DM has revealed."}</p>
         </Drawer>
       )}
       {drawer === "conditions" && <ConditionsDrawer {...props} onClose={() => setDrawer(null)} />}
