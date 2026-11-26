@@ -95,6 +95,34 @@ export function useApp(): AppState {
   return ctx;
 }
 
+/**
+ * Unsaved changes are copied to localStorage when the page is hidden, because that write is synchronous and
+ * survives a reload or a closed tab; the IndexedDB write that follows may not finish in time.
+ */
+const backupKey = (id: string) => `mimicbox:unsaved:${id}`;
+function readBackup(id: string): Character | null {
+  try {
+    const raw = localStorage.getItem(backupKey(id));
+    return raw ? (JSON.parse(raw) as Character) : null;
+  } catch {
+    return null;
+  }
+}
+function writeBackup(c: Character): void {
+  try {
+    localStorage.setItem(backupKey(c.id), JSON.stringify(c));
+  } catch {
+    // Storage full or blocked: the IndexedDB save still runs.
+  }
+}
+function clearBackup(id: string): void {
+  try {
+    localStorage.removeItem(backupKey(id));
+  } catch {
+    // Nothing to clear.
+  }
+}
+
 /** Loads one character, derives its sheet, and saves every change after a short pause. */
 export function useCharacter(id: string) {
   const { vault, refresh } = useApp();
@@ -105,9 +133,20 @@ export function useCharacter(id: string) {
 
   useEffect(() => {
     if (!vault) return;
-    vault.get<Character>(id).then((entry) => {
-      if (entry) setCharacter(entry.doc);
-      else setMissing(true);
+    vault.get<Character>(id).then(async (entry) => {
+      if (!entry) {
+        clearBackup(id);
+        setMissing(true);
+        return;
+      }
+      const backup = readBackup(id);
+      if (backup && backup.id === id) {
+        // The last session closed before its final save finished: keep the newer copy.
+        await vault.put(backup, summaryFor(backup));
+        clearBackup(id);
+        setCharacter(backup);
+        void refresh();
+      } else setCharacter(entry.doc);
     });
   }, [vault, id]);
 
@@ -116,11 +155,15 @@ export function useCharacter(id: string) {
     if (!c || !vault) return;
     pending.current = null;
     await vault.put(c, summaryFor(c));
+    if (!pending.current) clearBackup(c.id);
     await refresh();
   }, [vault, refresh]);
 
   useEffect(() => {
-    const onHide = () => void flush();
+    const onHide = () => {
+      if (pending.current) writeBackup(pending.current);
+      void flush();
+    };
     window.addEventListener("pagehide", onHide);
     document.addEventListener("visibilitychange", onHide);
     return () => {
@@ -182,6 +225,7 @@ export function useRoller(characterId: string | null) {
         await vault.addRoll(entry);
         await loadHistory();
       }
+      return shownRoll;
     },
     [vault, characterId, loadHistory],
   );

@@ -4,6 +4,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { go } from "../App";
 import { BackIcon, BagIcon, CloseIcon, D20Icon, ScrollIcon, SparkIcon, StarIcon, SwordIcon } from "../lib/icons";
 import { content, useCharacter, useRoller, type ShownRoll } from "../lib/state";
+import { useTable } from "../lib/table";
+import { Markdown } from "../lib/markdown";
 import { AbilitiesTab } from "./sheet/AbilitiesTab";
 import { ActionsTab } from "./sheet/ActionsTab";
 import { GearTab } from "./sheet/GearTab";
@@ -29,12 +31,39 @@ export interface SheetProps {
 
 type Tab = "actions" | "abilities" | "spells" | "gear" | "notes";
 
+/** How many columns the sheet gets: tabs on phones, every section side by side on tablets and desktops. */
+function useColumns(): 1 | 2 | 3 {
+  const query = (q: string) => typeof window !== "undefined" && window.matchMedia(q).matches;
+  const measure = (): 1 | 2 | 3 => (query("(min-width: 1280px)") ? 3 : query("(min-width: 900px)") ? 2 : 1);
+  const [cols, setCols] = useState(measure);
+  useEffect(() => {
+    const lists = ["(min-width: 1280px)", "(min-width: 900px)"].map((q) => window.matchMedia(q));
+    const onChange = () => setCols(measure());
+    lists.forEach((l) => l.addEventListener("change", onChange));
+    return () => lists.forEach((l) => l.removeEventListener("change", onChange));
+  }, []);
+  return cols;
+}
+
+const TAB_LABELS: Record<Tab, string> = { actions: "Actions", abilities: "Skills", spells: "Spells", gear: "Gear", notes: "Notes" };
+
 export function SheetScreen({ id }: { id: string }) {
   const { character, sheet, update, missing } = useCharacter(id);
   const roller = useRoller(id);
   const [tab, setTab] = useState<Tab>(() => (sessionStorage.getItem(`tab:${id}`) as Tab | null) ?? "actions");
   const [lastAsk, setLastAsk] = useState<RollAsk | null>(null);
-  const [drawer, setDrawer] = useState<"hp" | "conditions" | "dice" | "history" | null>(null);
+  const [drawer, setDrawer] = useState<"hp" | "conditions" | "dice" | "history" | "party" | null>(null);
+  const cols = useColumns();
+  const table = useTable();
+  const atTable = table.seat?.characterId === id;
+  const shareCharacter = table.shareCharacter;
+
+  // While at a table, the DM's copy follows every change, a moment after it is made.
+  useEffect(() => {
+    if (!atTable || !character) return;
+    const t = window.setTimeout(() => shareCharacter(character), 600);
+    return () => window.clearTimeout(t);
+  }, [atTable, character, shareCharacter]);
 
   useEffect(() => {
     try {
@@ -61,15 +90,21 @@ export function SheetScreen({ id }: { id: string }) {
     const expression = r.d20Modifier !== undefined ? d20Notation(r.d20Modifier, mode) : r.expression;
     const label = mode === "normal" ? r.label : `${r.label} (${mode === "advantage" ? "Advantage" : "Disadvantage"})`;
     setLastAsk(r);
-    void roller.roll({ label, expression });
+    void rollAndShare(label, expression);
   };
+  async function rollAndShare(label: string, expression: string) {
+    const shown = await roller.roll({ label, expression });
+    if (atTable && character) {
+      table.shareRoll({ characterName: character.name, label, expression, total: shown.result.total, breakdown: shown.breakdown, ...(shown.flag ? { flag: shown.flag } : {}) });
+    }
+  }
   const props: SheetProps = { character, sheet, update, ask: (r) => ask(r) };
   const hpPct = sheet.hp.max.value ? Math.max(0, Math.min(100, (sheet.hp.current / sheet.hp.max.value) * 100)) : 0;
 
   return (
     <>
       <header className="sheet-top">
-        <div className="sheet-top-inner">
+        <div className={cols > 1 ? "sheet-top-inner wide" : "sheet-top-inner"}>
           <div className="sheet-title">
             <button className="btn btn-quiet" style={{ padding: "6px", minHeight: 40 }} aria-label="Back to the vault" onClick={() => go({ name: "vault" })}>
               <BackIcon width={22} height={22} />
@@ -119,6 +154,11 @@ export function SheetScreen({ id }: { id: string }) {
               </button>
             )}
             {character.state.heroicInspiration && <span className="chip" aria-pressed="true">Heroic Inspiration</span>}
+            {atTable && (
+              <button className={`chip chip-table ${table.status}`} onClick={() => setDrawer("party")}>
+                {tableStatusText(table.status, table.invite?.campaign ?? "the game")}
+              </button>
+            )}
             <button className="chip" onClick={() => setDrawer("conditions")}>
               {character.state.conditions.length || character.state.exhaustion ? "Edit conditions" : "Add a condition"}
             </button>
@@ -126,39 +166,69 @@ export function SheetScreen({ id }: { id: string }) {
         </div>
       </header>
 
-      <main className="screen" style={{ paddingTop: 8 }}>
-        {sheet.pending.length > 0 && tab !== "notes" && (
-          <button className="notice notice-todo" style={{ width: "100%", textAlign: "left", border: 0, marginTop: 8 }} onClick={() => setTab("notes")}>
-            {sheet.pending.length === 1 ? sheet.pending[0]!.message : `${sheet.pending.length} choices are still open.`} Finish them in Notes.
+      <main className={cols > 1 ? "screen wide" : "screen"} style={{ paddingTop: 8 }}>
+        {atTable && table.combat && <CombatBanner sheet={sheet} onRollInitiative={() => ask({ label: "Initiative", expression: "", d20Modifier: sheet.initiative.value })} onOpen={() => setDrawer("party")} />}
+        {sheet.pending.length > 0 && (cols > 1 || tab !== "notes") && (
+          <button
+            className="notice notice-todo"
+            style={{ width: "100%", textAlign: "left", border: 0, marginTop: 8 }}
+            onClick={() => (cols > 1 ? document.getElementById("todo")?.scrollIntoView({ behavior: "smooth", block: "start" }) : setTab("notes"))}
+          >
+            {sheet.pending.length === 1 ? sheet.pending[0]!.message : `${sheet.pending.length} choices are still open.`} Finish them {cols > 1 ? "under To do" : "in Notes"}.
           </button>
         )}
-        {tab === "actions" && <ActionsTab {...props} />}
-        {tab === "abilities" && <AbilitiesTab {...props} />}
-        {tab === "spells" && <SpellsTab {...props} />}
-        {tab === "gear" && <GearTab {...props} />}
-        {tab === "notes" && <NotesTab {...props} onHistory={() => setDrawer("history")} />}
+        {cols === 1 ? (
+          <>
+            {tab === "actions" && <ActionsTab {...props} />}
+            {tab === "abilities" && <AbilitiesTab {...props} />}
+            {tab === "spells" && <SpellsTab {...props} />}
+            {tab === "gear" && <GearTab {...props} />}
+            {tab === "notes" && <NotesTab {...props} onHistory={() => setDrawer("history")} />}
+          </>
+        ) : (
+          <div className="sheet-grid">
+            {(cols === 3
+              ? [["abilities"], ["actions", "spells"], ["gear", "notes"]]
+              : [["abilities", "gear"], ["actions", "spells", "notes"]]
+            ).map((column, i) => (
+              <div key={i} className="sheet-col">
+                {column.map((section) => (
+                  <div key={section} className="sheet-block" aria-label={TAB_LABELS[section as Tab]} role="region">
+                    {section === "actions" && <ActionsTab {...props} />}
+                    {section === "abilities" && <AbilitiesTab {...props} />}
+                    {section === "spells" && <SpellsTab {...props} />}
+                    {section === "gear" && <GearTab {...props} />}
+                    {section === "notes" && <NotesTab {...props} onHistory={() => setDrawer("history")} />}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
       </main>
 
       <button className="die-fab" aria-label="Roll dice" onClick={() => setDrawer("dice")}>
         <D20Icon />
       </button>
 
-      <nav className="tabbar" aria-label="Sheet sections">
-        {(
-          [
-            ["actions", "Actions", SwordIcon],
-            ["abilities", "Skills", StarIcon],
-            ["spells", "Spells", SparkIcon],
-            ["gear", "Gear", BagIcon],
-            ["notes", "Notes", ScrollIcon],
-          ] as const
-        ).map(([t, label, Icon]) => (
-          <button key={t} aria-current={tab === t ? "page" : undefined} onClick={() => setTab(t)}>
-            <Icon />
-            {label}
-          </button>
-        ))}
-      </nav>
+      {cols === 1 && (
+        <nav className="tabbar" aria-label="Sheet sections">
+          {(
+            [
+              ["actions", SwordIcon],
+              ["abilities", StarIcon],
+              ["spells", SparkIcon],
+              ["gear", BagIcon],
+              ["notes", ScrollIcon],
+            ] as const
+          ).map(([t, Icon]) => (
+            <button key={t} aria-current={tab === t ? "page" : undefined} onClick={() => setTab(t)}>
+              <Icon />
+              {TAB_LABELS[t]}
+            </button>
+          ))}
+        </nav>
+      )}
 
       {roller.shown && (
         <RollDrawer
@@ -170,7 +240,7 @@ export function SheetScreen({ id }: { id: string }) {
             if (!lastAsk?.damage) return;
             const d = lastAsk.damage;
             setLastAsk({ label: d.label, expression: d.expression });
-            void roller.roll({ label: crit ? `${d.label} (critical)` : d.label, expression: crit ? criticalNotation(d.expression) : d.expression });
+            void rollAndShare(crit ? `${d.label} (critical)` : d.label, crit ? criticalNotation(d.expression) : d.expression);
           }}
           onHistory={() => {
             roller.close();
@@ -179,6 +249,7 @@ export function SheetScreen({ id }: { id: string }) {
         />
       )}
       {drawer === "hp" && <HpDrawer {...props} onClose={() => setDrawer(null)} />}
+      {drawer === "party" && <PartyDrawer onClose={() => setDrawer(null)} />}
       {drawer === "conditions" && <ConditionsDrawer {...props} onClose={() => setDrawer(null)} />}
       {drawer === "dice" && (
         <DiceDrawer
@@ -438,5 +509,133 @@ function DiceDrawer({ onClose, onRoll }: { onClose: () => void; onRoll: (express
         </button>
       </form>
     </Drawer>
+  );
+}
+
+function tableStatusText(status: ReturnType<typeof useTable>["status"], campaign: string): string {
+  switch (status) {
+    case "connected":
+      return `At ${campaign}`;
+    case "waiting":
+      return `Waiting for the DM of ${campaign}`;
+    case "connecting":
+      return `Connecting to ${campaign}`;
+    case "denied":
+      return `${campaign}: not let in`;
+    case "error":
+      return `${campaign}: can't connect`;
+    default:
+      return campaign;
+  }
+}
+
+function PartyDrawer({ onClose }: { onClose: () => void }) {
+  const table = useTable();
+  const campaign = table.invite?.campaign ?? "The game";
+  return (
+    <Drawer title={campaign} onClose={onClose}>
+      {table.problem ? (
+        <p className="notice">{table.problem}</p>
+      ) : (
+        <p className="muted small" style={{ marginTop: 0 }}>
+          {table.status === "connected"
+            ? "Connected to your DM. Your sheet and rolls are shared with the table as you play."
+            : table.status === "waiting"
+              ? "Waiting for your DM's app. It connects by itself when the DM starts hosting."
+              : "Connecting…"}
+        </p>
+      )}
+      {table.combat && (
+        <>
+          <h3>Combat, round {table.combat.round}</h3>
+          <ol className="initiative" aria-label="Initiative order">
+            {table.combat.order.map((c) => (
+              <li key={c.id} aria-current={c.id === table.combat!.turnId ? "true" : undefined} className={c.memberId === table.memberId ? "you" : ""}>
+                <span className="init">{c.initiative ?? "–"}</span>
+                <span className="grow">{c.name}</span>
+                {c.id === table.combat!.turnId && <span className="small">Acting</span>}
+              </li>
+            ))}
+          </ol>
+        </>
+      )}
+      <h3 style={{ marginTop: 16 }}>Party</h3>
+      {table.party.length === 0 && <p className="muted">No one else yet.</p>}
+      <ul className="rows" aria-label="Party">
+        {table.party.map((m) => (
+          <li key={m.userId} className="resource">
+            <div className="spread">
+              <span>
+                <strong>{m.character?.name ?? m.playerName}</strong>
+                <br />
+                <span className="muted small">
+                  {m.character ? `${m.character.classSummary}, played by ${m.playerName}` : `${m.playerName} hasn't shared a character yet`}
+                </span>
+              </span>
+              <span className={m.connected ? "small" : "muted small"}>{m.connected ? "Here" : "Away"}</span>
+            </div>
+            {m.character && (
+              <div className="muted small" style={{ marginTop: 6 }}>
+                HP {m.character.hp.current} of {m.character.hp.max}
+                {m.character.hp.temp ? ` (+${m.character.hp.temp} temporary)` : ""}, AC {m.character.ac}
+                {m.character.conditions.length ? `, ${m.character.conditions.join(", ")}` : ""}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+      {table.handouts.length > 0 && (
+        <>
+          <h3 style={{ marginTop: 16 }}>Handouts</h3>
+          {[...table.handouts].reverse().map((h) => (
+            <details key={h.id} className="feature" aria-label={h.title}>
+              <summary>
+                <span className="grow">{h.title}</span>
+              </summary>
+              <Markdown text={h.body} />
+            </details>
+          ))}
+        </>
+      )}
+      <h3 style={{ marginTop: 16 }}>Table rolls</h3>
+      {table.rolls.length === 0 && <p className="muted">No rolls shared yet.</p>}
+      <ul className="history" aria-label="Table rolls">
+        {[...table.rolls].reverse().map((r) => (
+          <li key={r.id}>
+            <span className={`t ${r.flag ?? ""}`}>{r.total}</span>
+            <span className="grow">
+              {r.characterName}: {r.label}
+              <br />
+              <span className="breakdown small">{r.breakdown}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <button className="btn" style={{ marginTop: 16 }} onClick={() => void table.leave().then(onClose)}>
+        Leave the game
+      </button>
+    </Drawer>
+  );
+}
+
+function CombatBanner({ sheet, onRollInitiative, onOpen }: { sheet: DerivedSheet; onRollInitiative: () => void; onOpen: () => void }) {
+  const table = useTable();
+  const combat = table.combat!;
+  const mine = combat.order.find((c) => c.memberId === table.memberId);
+  const yourTurn = mine && combat.turnId === mine.id;
+  if (mine && mine.initiative === null) {
+    return (
+      <div className="notice notice-todo combat-banner" role="status">
+        <span>Combat has started. Roll initiative ({formatModifier(sheet.initiative.value)}).</span>
+        <button className="btn btn-primary" onClick={onRollInitiative}>
+          Roll initiative
+        </button>
+      </div>
+    );
+  }
+  return (
+    <button className={yourTurn ? "notice combat-banner your-turn" : "notice combat-banner"} style={{ width: "100%", textAlign: "left", border: 0 }} onClick={onOpen} role="status">
+      {yourTurn ? `Your turn. Round ${combat.round}.` : `Round ${combat.round}. ${combat.order.find((c) => c.id === combat.turnId)?.name ?? "Waiting for the next turn"}${combat.order.some((c) => c.id === combat.turnId) ? " is acting." : "."}`}
+    </button>
   );
 }

@@ -32,11 +32,20 @@ export default defineConfig({
         globPatterns: ["**/*.{js,css,html,svg,png,woff2,json}"],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         navigateFallback: "index.html",
+        navigateFallbackDenylist: [/studio\.html/, /display\.html/],
       },
     }),
   ],
   build: {
     target: "es2022",
     sourcemap: true,
+    // Three pages, three bundles: players never download the DM's code.
+    rollupOptions: {
+      input: {
+        index: "index.html",
+        studio: "studio.html",
+        display: "display.html",
+      },
+    },
   },
 });

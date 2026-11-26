@@ -65,6 +65,7 @@ export function classResources(
       break;
     case "cleric":
       add({ id: "channel-divinity", name: "Channel Divinity", max: col(columns, "Channel Divinity"), reset: "shortOne", source: "Cleric: Channel Divinity" });
+      if (level >= 10) add({ id: "divine-intervention", name: "Divine Intervention", max: 1, reset: "long", source: level >= 20 ? "Cleric: Divine Intervention, Greater Divine Intervention" : "Cleric: Divine Intervention" });
       break;
     case "druid":
       add({ id: "wild-shape", name: "Wild Shape", max: col(columns, "Wild Shape"), reset: "shortOne", source: "Druid: Wild Shape" });
@@ -81,19 +82,27 @@ export function classResources(
     case "paladin":
       add({ id: "lay-on-hands", name: "Lay On Hands", max: 5 * level, reset: "long", unit: "points", source: "Paladin: Lay On Hands" });
       add({ id: "channel-divinity", name: "Channel Divinity", max: col(columns, "Channel Divinity"), reset: "shortOne", source: "Paladin: Channel Divinity" });
+      if (level >= 5) add({ id: "faithful-steed", name: "Find Steed (free cast)", max: 1, reset: "long", source: "Paladin: Faithful Steed" });
       break;
     case "ranger":
       add({ id: "favored-enemy", name: "Hunter's Mark (free casts)", max: col(columns, "Favored Enemy"), reset: "long", source: "Ranger: Favored Enemy" });
+      if (level >= 10) add({ id: "tireless", name: "Tireless (Temporary Hit Points)", max: Math.max(1, mods.wis), reset: "long", detail: `1d8+${Math.max(0, mods.wis)}`, source: "Ranger: Tireless" });
+      if (level >= 14) add({ id: "natures-veil", name: "Nature's Veil", max: Math.max(1, mods.wis), reset: "long", source: "Ranger: Nature's Veil" });
+      break;
+    case "rogue":
+      if (level >= 20) add({ id: "stroke-of-luck", name: "Stroke of Luck", max: 1, reset: "short", source: "Rogue: Stroke of Luck" });
       break;
     case "sorcerer":
       add({ id: "innate-sorcery", name: "Innate Sorcery", max: 2, reset: "long", source: "Sorcerer: Innate Sorcery" });
       add({ id: "sorcery-points", name: "Sorcery Points", max: col(columns, "Sorcery Points"), reset: "long", unit: "points", source: "Sorcerer: Font of Magic" });
+      if (level >= 5) add({ id: "sorcerous-restoration", name: "Sorcerous Restoration", max: 1, reset: "long", detail: `${Math.floor(level / 2)} points`, source: "Sorcerer: Sorcerous Restoration" });
       break;
     case "warlock":
       if (level >= 2) add({ id: "magical-cunning", name: "Magical Cunning", max: 1, reset: "long", source: "Warlock: Magical Cunning" });
       break;
     case "wizard":
       add({ id: "arcane-recovery", name: "Arcane Recovery", max: 1, reset: "long", detail: `${Math.ceil(level / 2)} slot levels`, source: "Wizard: Arcane Recovery" });
+      if (level >= 20) add({ id: "signature-spells", name: "Signature Spells", max: 2, reset: "short", detail: "one cast of each", source: "Wizard: Signature Spells" });
       break;
   }
   void proficiencyBonus;
@@ -161,6 +170,18 @@ export const CLASS_CHOICES: Record<string, ClassChoiceDef[]> = {
 
 /** Subclass choices that need their own pick (Circle of the Land's land type). */
 export const SUBCLASS_CHOICES: Record<string, ClassChoiceDef[]> = {
+  "draconic-sorcery": [
+    {
+      key: "elementalAffinity",
+      label: "Elemental Affinity",
+      level: 6,
+      options: ["Acid", "Cold", "Fire", "Lightning", "Poison"].map((n) => ({
+        id: n.toLowerCase(),
+        name: n,
+        summary: `${n} resistance; add your Charisma modifier to one ${n} damage roll of your Sorcerer spells.`,
+      })),
+    },
+  ],
   "circle-of-the-land": [
     {
       key: "landType",
@@ -306,3 +327,154 @@ export const CONDITIONS = [
   "Stunned",
   "Unconscious",
 ] as const;
+
+// ---------- levels 6 to 20 ----------
+
+/** Epic Boon: every class gains a feat at level 19. */
+export const EPIC_BOON_LEVEL = 19;
+
+/** Attacks per Attack action from Extra Attack and its upgrades. */
+export function attacksPerAction(classId: string, level: number): { count: number; source: string } | null {
+  if (classId === "fighter") {
+    if (level >= 20) return { count: 4, source: "Fighter: Three Extra Attacks" };
+    if (level >= 11) return { count: 3, source: "Fighter: Two Extra Attacks" };
+  }
+  if (["barbarian", "fighter", "monk", "paladin", "ranger"].includes(classId) && level >= 5) {
+    return { count: 2, source: `${classId[0]!.toUpperCase()}${classId.slice(1)}: Extra Attack` };
+  }
+  return null;
+}
+
+/** Level 20 capstones that raise ability scores above 20 (Primal Champion, Body and Mind). */
+export const CAPSTONE_ABILITIES: Record<string, { abilities: Ability[]; amount: number; max: number; source: string }> = {
+  barbarian: { abilities: ["str", "con"], amount: 4, max: 25, source: "Primal Champion" },
+  monk: { abilities: ["dex", "wis"], amount: 4, max: 25, source: "Body and Mind" },
+};
+
+/** Saving throw proficiencies gained later: Monk Disciplined Survivor (14), Rogue Slippery Mind (15). */
+export function laterSaveProficiencies(classId: string, level: number): { abilities: Ability[]; source: string } | null {
+  if (classId === "monk" && level >= 14) return { abilities: ["str", "dex", "con", "int", "wis", "cha"], source: "Disciplined Survivor" };
+  if (classId === "rogue" && level >= 15) return { abilities: ["wis", "cha"], source: "Slippery Mind" };
+  return null;
+}
+
+/** Feats that raise one ability score by 1, and the cap that increase may reach. */
+export const FEAT_ABILITY_INCREASE: Record<string, { abilities: Ability[] | "any"; max: number }> = {
+  grappler: { abilities: ["str", "dex"], max: 20 },
+  "boon-of-combat-prowess": { abilities: "any", max: 30 },
+  "boon-of-dimensional-travel": { abilities: "any", max: 30 },
+  "boon-of-fate": { abilities: "any", max: 30 },
+  "boon-of-irresistible-offense": { abilities: ["str", "dex"], max: 30 },
+  "boon-of-spell-recall": { abilities: ["int", "wis", "cha"], max: 30 },
+  "boon-of-the-night-spirit": { abilities: "any", max: 30 },
+  "boon-of-truesight": { abilities: "any", max: 30 },
+};
+
+export interface ClassOptionRule {
+  /** The option list's id in the content pack. */
+  listId: string;
+  label: string;
+  count: number;
+}
+
+/** How many picks a class has from its option list at a level: Eldritch Invocations, Metamagic. */
+export function classOptionRule(classId: string, level: number, columns: Record<string, string>): ClassOptionRule | null {
+  if (classId === "warlock") return { listId: "eldritch-invocation-options", label: "Eldritch Invocations", count: col(columns, "Eldritch Invocations") };
+  if (classId === "sorcerer" && level >= 2) return { listId: "metamagic-options", label: "Metamagic", count: level >= 17 ? 6 : level >= 10 ? 4 : 2 };
+  return null;
+}
+
+/** "Level 5+ Warlock" prerequisites on an option, read from its text. Other prerequisites are listed for the player to check. */
+export function optionLevelPrerequisite(text: string): number {
+  const m = /Prerequisite:[^*]*?Level (\d+)\+/.exec(text);
+  return m ? Number(m[1]) : 0;
+}
+
+/** Options that require another option first, for example Thirsting Blade needs Pact of the Blade. */
+export function optionRequires(text: string): string | null {
+  const m = /Prerequisite:[^*]*?, ([A-Z][^,*]+?) Invocation/.exec(text);
+  return m ? m[1]!.toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9]+/g, "-") : null;
+}
+
+/** Warlock Mystic Arcanum: class level that grants each spell level. */
+export const MYSTIC_ARCANUM: Record<number, number> = { 11: 6, 13: 7, 15: 8, 17: 9 };
+
+/** Champion crit range by Fighter level. */
+export function championCritRange(level: number): number {
+  return level >= 15 ? 18 : level >= 3 ? 19 : 20;
+}
+
+// ---------- multiclassing ----------
+
+/** Multiclass Spellcaster table: spell slots by combined caster level (index 0 = level 1). */
+export const MULTICLASS_SLOTS: number[][] = [
+  [2],
+  [3],
+  [4, 2],
+  [4, 3],
+  [4, 3, 2],
+  [4, 3, 3],
+  [4, 3, 3, 1],
+  [4, 3, 3, 2],
+  [4, 3, 3, 3, 1],
+  [4, 3, 3, 3, 2],
+  [4, 3, 3, 3, 2, 1],
+  [4, 3, 3, 3, 2, 1],
+  [4, 3, 3, 3, 2, 1, 1],
+  [4, 3, 3, 3, 2, 1, 1],
+  [4, 3, 3, 3, 2, 1, 1, 1],
+  [4, 3, 3, 3, 2, 1, 1, 1],
+  [4, 3, 3, 3, 2, 1, 1, 1, 1],
+  [4, 3, 3, 3, 3, 1, 1, 1, 1],
+  [4, 3, 3, 3, 3, 2, 1, 1, 1],
+  [4, 3, 3, 3, 3, 2, 2, 1, 1],
+];
+
+const FULL_CASTERS = ["bard", "cleric", "druid", "sorcerer", "wizard"];
+const HALF_CASTERS = ["paladin", "ranger"];
+
+/** Classes with the Spellcasting feature (Warlock has Pact Magic instead). */
+export const hasSpellcastingFeature = (classId: string) => FULL_CASTERS.includes(classId) || HALF_CASTERS.includes(classId);
+
+/** Combined level for the Multiclass Spellcaster table: full casters count fully, Paladin and Ranger count half, rounded up. */
+export function multiclassCasterLevel(entries: { id: string; level: number }[]): number {
+  return entries.reduce((t, e) => t + (FULL_CASTERS.includes(e.id) ? e.level : HALF_CASTERS.includes(e.id) ? Math.ceil(e.level / 2) : 0), 0);
+}
+
+/** What a class grants when it is not your first class ("As a Multiclass Character"). */
+export interface MulticlassGains {
+  armor: { light?: boolean; medium?: boolean; shield?: boolean };
+  martial: boolean;
+  /** Skill picks: from the class list, or any skill (Bard). */
+  skills: { count: number; from: "class" | "any" };
+  tool: string | null;
+}
+export const MULTICLASS_GAINS: Record<string, MulticlassGains> = {
+  barbarian: { armor: { shield: true }, martial: true, skills: { count: 0, from: "class" }, tool: null },
+  bard: { armor: { light: true }, martial: false, skills: { count: 1, from: "any" }, tool: "One Musical Instrument of your choice (Bard)" },
+  cleric: { armor: { light: true, medium: true, shield: true }, martial: false, skills: { count: 0, from: "class" }, tool: null },
+  druid: { armor: { light: true, shield: true }, martial: false, skills: { count: 0, from: "class" }, tool: null },
+  fighter: { armor: { light: true, medium: true, shield: true }, martial: true, skills: { count: 0, from: "class" }, tool: null },
+  monk: { armor: {}, martial: false, skills: { count: 0, from: "class" }, tool: null },
+  paladin: { armor: { light: true, medium: true, shield: true }, martial: true, skills: { count: 0, from: "class" }, tool: null },
+  ranger: { armor: { light: true, medium: true, shield: true }, martial: true, skills: { count: 1, from: "class" }, tool: null },
+  rogue: { armor: { light: true }, martial: false, skills: { count: 1, from: "class" }, tool: "Thieves' Tools (Rogue)" },
+  sorcerer: { armor: {}, martial: false, skills: { count: 0, from: "class" }, tool: null },
+  warlock: { armor: { light: true }, martial: false, skills: { count: 0, from: "class" }, tool: null },
+  wizard: { armor: {}, martial: false, skills: { count: 0, from: "class" }, tool: null },
+};
+
+const ABILITY_BY_NAME: Record<string, Ability> = { strength: "str", dexterity: "dex", constitution: "con", intelligence: "int", wisdom: "wis", charisma: "cha" };
+
+/** Reads a class's primary ability from the pack: "Strength or Dexterity" needs either, "Dexterity and Wisdom" needs both. */
+export function primaryAbilities(text: string): { abilities: Ability[]; all: boolean } {
+  const abilities = text
+    .toLowerCase()
+    .split(/\s+(?:or|and)\s+|,\s*/)
+    .map((w) => ABILITY_BY_NAME[w.trim()])
+    .filter((a): a is Ability => Boolean(a));
+  return { abilities, all: /\band\b/i.test(text) };
+}
+
+/** Multiclassing needs 13 in the primary ability of the new class and of every current class. */
+export const MULTICLASS_MINIMUM = 13;

@@ -3,6 +3,7 @@ import { longRest, setResourceSpent, shortRest, type ResourceDef } from "@mimicb
 import { roll } from "@mimicbox/dice";
 import { useState } from "react";
 import { Explain } from "../../components/Explain";
+import { AttackForm } from "../../components/homebrew";
 import { content } from "../../lib/state";
 import { Drawer, type SheetProps } from "../SheetScreen";
 
@@ -14,10 +15,17 @@ const resetText: Record<ResourceDef["reset"], string> = {
 
 export function ActionsTab({ character, sheet, update, ask }: SheetProps) {
   const [rest, setRest] = useState<"short" | "long" | null>(null);
+  const [attackForm, setAttackForm] = useState<{ id: string | null } | null>(null);
+  const customAttacks = character.homebrew?.attacks ?? [];
   return (
     <>
       <section className="section">
         <h2>Attacks</h2>
+        {sheet.attacksPerAction.count > 1 && (
+          <p className="muted small" style={{ margin: "4px 0 8px" }}>
+            The Attack action makes {sheet.attacksPerAction.count} attacks ({sheet.attacksPerAction.source}).
+          </p>
+        )}
         <ul className="rows">
           {sheet.attacks.map((a) => (
             <li key={a.id} className="attack">
@@ -62,12 +70,21 @@ export function ActionsTab({ character, sheet, update, ask }: SheetProps) {
                 </ul>
               )}
               <Explain label="Where the attack bonus comes from" value={a.toHit} />
+              {a.id.startsWith("custom:") && (
+                <button className="btn btn-quiet small" style={{ marginTop: 4 }} onClick={() => setAttackForm({ id: a.id.slice("custom:".length) })}>
+                  Edit {a.name}
+                </button>
+              )}
             </li>
           ))}
         </ul>
         <p className="muted small" style={{ marginTop: 8 }}>
           Equip weapons in Gear to see them here. Tap Hit to roll the attack, then roll damage from the result.
         </p>
+        <button className="btn" style={{ marginTop: 10 }} onClick={() => setAttackForm({ id: null })}>
+          Add an attack
+        </button>
+        {attackForm && <AttackForm attack={customAttacks.find((x) => x.id === attackForm.id) ?? null} update={update} onClose={() => setAttackForm(null)} />}
       </section>
 
       {sheet.resources.length > 0 && (
@@ -124,7 +141,7 @@ export function ActionsTab({ character, sheet, update, ask }: SheetProps) {
       <section className="section">
         <h2>Rest</h2>
         <p className="muted small" style={{ marginTop: -4 }}>
-          Hit Point Dice: {sheet.hitDiceAvailable} of {sheet.level} left ({sheet.hitDice.map((h) => `d${h.die}`).join(", ")}).
+          Hit Point Dice: {sheet.hitDiceByDie.map((g) => `${g.available} of ${g.total} d${g.die}`).join(", ")} left.
         </p>
         <div className="row">
           <button className="btn" onClick={() => setRest("short")}>
@@ -158,23 +175,26 @@ export function ActionsTab({ character, sheet, update, ask }: SheetProps) {
 }
 
 function ShortRestDrawer({ sheet, update, onClose }: SheetProps & { onClose: () => void }) {
-  const [rolls, setRolls] = useState<number[]>([]);
-  const die = sheet.hitDice[0]?.die ?? 8;
+  const [rolls, setRolls] = useState<{ die: number; roll: number }[]>([]);
   const con = sheet.abilities.con.mod;
-  const left = sheet.hitDiceAvailable - rolls.length;
-  const healed = rolls.reduce((t, r) => t + Math.max(0, r + con), 0);
+  const healed = rolls.reduce((t, r) => t + Math.max(0, r.roll + con), 0);
   return (
     <Drawer title="Short Rest" onClose={onClose}>
       <p>Spend Hit Point Dice to heal. Each die heals its roll plus your Constitution modifier ({formatModifier(con)}).</p>
-      <div className="row">
-        <button className="btn" disabled={left <= 0} onClick={() => setRolls((r) => [...r, roll(`1d${die}`).total])}>
-          Roll a d{die}
-        </button>
-        <span className="muted small">{left} left</span>
-      </div>
+      {sheet.hitDiceByDie.map((g) => {
+        const left = g.available - rolls.filter((r) => r.die === g.die).length;
+        return (
+          <div className="row" key={g.die} style={{ marginBottom: 6 }}>
+            <button className="btn" disabled={left <= 0} onClick={() => setRolls((r) => [...r, { die: g.die, roll: roll(`1d${g.die}`).total }])}>
+              Roll a d{g.die}
+            </button>
+            <span className="muted small">{left} left</span>
+          </div>
+        );
+      })}
       {rolls.length > 0 && (
         <p style={{ marginTop: 10 }}>
-          Rolled {rolls.join(", ")}: heal <strong>{healed}</strong>.
+          Rolled {rolls.map((r) => r.roll).join(", ")}: heal <strong>{healed}</strong>.
         </p>
       )}
       <button

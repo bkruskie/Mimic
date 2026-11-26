@@ -16,7 +16,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "srd:import": "node tools/srd-import/import.mjs",
     "check": "pnpm typecheck && pnpm test && pnpm build",
-    "test:e2e": "pnpm --filter @mimicbox/companion build && node tests/e2e/character-sheet.mjs"
+    "test:e2e": "pnpm --filter @mimicbox/companion build && node tests/e2e/character-sheet.mjs && node tests/e2e/table.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.7",
