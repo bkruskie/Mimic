@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Mimic Box">
+  <rect width="512" height="512" rx="112" fill="#241A26"/>
+  <!-- lid: a low barrel top -->
+  <path d="M92 236V176c0-28 18-48 46-52 78-12 158-12 236 0 28 4 46 24 46 52v60z" fill="#6A4630"/>
+  <path d="M146 128v108M366 128v108" stroke="#C9973F" stroke-width="18"/>
+  <path d="M92 222h328v18H92z" fill="#C9973F"/>
+  <!-- eyes -->
+  <circle cx="214" cy="182" r="15" fill="#EFE4D2"/>
+  <circle cx="298" cy="182" r="15" fill="#EFE4D2"/>
+  <circle cx="218" cy="185" r="7" fill="#241A26"/>
+  <circle cx="302" cy="185" r="7" fill="#241A26"/>
+  <!-- upper teeth -->
+  <path d="M114 240l13 28 13-28zm40 0l13 28 13-28zm40 0l13 28 13-28zm40 0l13 28 13-28zm40 0l13 28 13-28zm40 0l13 28 13-28zm40 0l13 28 13-28z" fill="#EFE4D2"/>
+  <!-- mouth -->
+  <path d="M100 268h312v30H100z" fill="#150F17"/>
+  <!-- base -->
+  <path d="M92 298h328v108c0 12-10 22-22 22H114c-12 0-22-10-22-22z" fill="#6A4630"/>
+  <path d="M146 298v130M366 298v130" stroke="#C9973F" stroke-width="18"/>
+  <path d="M92 298h328v14H92z" fill="#C9973F"/>
+  <!-- lower teeth -->
+  <path d="M176 298l13-26 13 26zm134 0l13-26 13 26z" fill="#EFE4D2"/>
+  <!-- tongue lolling over the lip -->
+  <path d="M222 282c0-8 68-8 68 0v60c0 22-68 22-68 0z" fill="#D9476B"/>
+  <path d="M256 290v44" stroke="#B2304F" stroke-width="5" stroke-linecap="round"/>
+  <!-- lock -->
+  <rect x="236" y="372" width="40" height="40" rx="8" fill="#C9973F"/>
+  <circle cx="256" cy="388" r="6" fill="#241A26"/>
+</svg>

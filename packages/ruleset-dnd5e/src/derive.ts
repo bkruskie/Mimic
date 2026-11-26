@@ -308,7 +308,11 @@ export function derive(character: Character, content: Content): DerivedSheet {
       pending.push({ kind: "weapon-mastery", message: `Choose ${masteries - e.weaponMasteries.length} more weapon${masteries - e.weaponMasteries.length === 1 ? "" : "s"} for Weapon Mastery.`, count: masteries - e.weaponMasteries.length, key: e.id });
     }
     for (const asiLevel of asiLevels(e.id).filter((l) => l <= e.level)) {
-      if (!build.feats.some((f) => f.source === `asi:${e.id}:${asiLevel}`)) {
+      const taken = build.feats.find((f) => f.source === `asi:${e.id}:${asiLevel}`);
+      const unspent =
+        taken?.id === "ability-score-improvement" &&
+        Object.values(taken.abilityIncreases ?? {}).reduce((t, v) => t + (v ?? 0), 0) < 2;
+      if (!taken || unspent) {
         pending.push({ kind: "asi", message: `Level ${asiLevel}: take an Ability Score Improvement or another feat.`, key: e.id, level: asiLevel });
       }
     }
