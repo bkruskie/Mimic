@@ -3,9 +3,10 @@
  */
 import { DiceSyntaxError, describeRoll, formatModifier, parseDice, roll as rollDice } from "@mimicbox/dice";
 import { ABILITIES, ABILITY_NAMES, SKILLS, SKILL_IDS, derive, newId, srdContent as content } from "@mimicbox/ruleset-dnd5e";
-import { addDmRoll, createCampaign, randomSecret, removeMember, replaceInvite, type Member, type SharedRoll } from "@mimicbox/table";
+import { CampaignImportError, addDmRoll, createCampaign, exportCampaign, importCampaign, randomSecret, removeMember, replaceInvite, type Member, type SharedRoll } from "@mimicbox/table";
+import { downloadJson, fileSafe } from "../lib/download";
 import qrcode from "qrcode-generator";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BackIcon } from "../lib/icons";
 import { deleteCampaign, getCampaign, listCampaigns, relaysFromAddress, saveCampaign, type StudioCampaign } from "./store";
 import { useHost } from "./useHost";
@@ -29,6 +30,21 @@ function CampaignList() {
   useEffect(() => {
     listCampaigns().then(setCampaigns, (e: Error) => setError(e.message));
   }, []);
+  const fileInput = useRef<HTMLInputElement>(null);
+  async function onImport(file: File) {
+    setError(null);
+    try {
+      const { campaign, problems } = importCampaign(JSON.parse(await file.text()), content, { room: randomSecret(), key: randomSecret() });
+      const taken = (campaigns ?? []).some((c) => c.id === campaign.id);
+      const c: StudioCampaign = { ...campaign, ...(taken ? { id: newId(), name: `${campaign.name} (copy)` } : {}), relays: relaysFromAddress() };
+      await saveCampaign(c);
+      sessionStorage.setItem(`imported:${c.id}`, "1");
+      if (problems.length) sessionStorage.setItem(`import-problems:${c.id}`, problems.join(" "));
+      location.hash = `#/c/${c.id}`;
+    } catch (e) {
+      setError(e instanceof SyntaxError ? "That file isn't valid JSON, so it can't be a campaign." : e instanceof CampaignImportError ? e.message : "That campaign file couldn't be read.");
+    }
+  }
   async function create() {
     const c: StudioCampaign = { ...createCampaign({ id: newId(), name: name.trim(), room: randomSecret(), key: randomSecret() }), relays: relaysFromAddress() };
     await saveCampaign(c);
@@ -65,6 +81,22 @@ function CampaignList() {
           </button>
         </form>
       </section>
+      <div className="row" style={{ marginTop: 12 }}>
+        <button className="btn" onClick={() => fileInput.current?.click()}>
+          Import a campaign
+        </button>
+        <input
+          ref={fileInput}
+          type="file"
+          accept=".mimicbox-campaign,.json,application/json"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void onImport(f);
+            e.target.value = "";
+          }}
+        />
+      </div>
       {campaigns && campaigns.length > 0 && (
         <section className="section">
           <h2>Your campaigns</h2>
@@ -118,6 +150,8 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
   const here = members.filter((m) => host.connected.includes(m.userId)).length;
   const [copied, setCopied] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [importProblems] = useState(() => sessionStorage.getItem(`import-problems:${initial.id}`));
+  const [imported] = useState(() => sessionStorage.getItem(`imported:${initial.id}`) === "1");
   return (
     <>
       <header className="sheet-top">
@@ -143,6 +177,8 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
         </div>
       </header>
       <main className="screen wide">
+        {importProblems && <p className="notice">{importProblems}</p>}
+        {imported && <p className="notice notice-todo">Imported. Send your players the invite link below: links from before the import don't work.</p>}
         <div className="sheet-grid studio-grid">
           <div className="sheet-col">
             <section className="section">
@@ -202,6 +238,15 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
             </section>
             <DmDice onRoll={(r) => update((c) => ({ ...c, ...addDmRoll(c, r, newId) }))} />
             <RollLog rolls={campaign.rolls} />
+            <section className="section">
+              <h2>Backup</h2>
+              <p className="muted small" style={{ marginTop: 4 }}>
+                Your campaign lives only in this browser. Download a backup now and then, or to move to another computer. The file includes your players' characters, so keep it private.
+              </p>
+              <button className="btn" onClick={() => downloadJson(exportCampaign(campaign), `${fileSafe(campaign.name, "campaign")}.mimicbox-campaign`)}>
+                Download a backup
+              </button>
+            </section>
             <section className="section">
               {confirmDelete ? (
                 <div className="row">

@@ -178,6 +178,38 @@ try {
   check((await dm.page.locator(".member").count()) === 2, "and no extra party members");
   await shot(dm.page, "dm-party");
 
+  // ----- Backups: the DM moves the campaign to another computer; a player restores their vault -----
+  const [campaignFile] = await Promise.all([dm.page.waitForEvent("download"), dm.page.getByRole("button", { name: "Download a backup" }).click()]);
+  check(/\.mimicbox-campaign$/.test(campaignFile.suggestedFilename()), `the DM downloads ${campaignFile.suggestedFilename()}`);
+  const backupPath = join(SHOTS, "backup.mimicbox-campaign");
+  await campaignFile.saveAs(backupPath);
+  check(!readFileSync(backupPath, "utf8").includes(newInvite.split("/join/")[1]), "the backup holds no invite secret");
+  const laptop = await device("DM laptop", { width: 1280, height: 800 });
+  await laptop.page.goto(`${base}studio.html?relay=${encodeURIComponent(relayUrl)}`);
+  const campaignChooser = laptop.page.waitForEvent("filechooser");
+  await laptop.page.getByRole("button", { name: "Import a campaign" }).click();
+  await (await campaignChooser).setFiles(backupPath);
+  await laptop.page.getByRole("heading", { name: "The Sunken Bell" }).waitFor();
+  const moved = await text(laptop.page);
+  check(/Wren Ashdown/.test(moved) && /Bram Hollis/.test(moved) && /Imported\. Send your players the invite link/.test(moved), "the other computer opens the campaign with its party");
+  await laptop.context.close();
+
+  const [vaultFile] = await Promise.all([bob.page.waitForEvent("download"), (async () => {
+    await bob.page.goto(base);
+    await bob.page.getByRole("button", { name: "Back up all characters" }).click();
+  })()]);
+  const vaultPath = join(SHOTS, "bob.mimicbox-backup");
+  await vaultFile.saveAs(vaultPath);
+  const phone = await device("Bob's new phone", { width: 390, height: 844 });
+  await phone.page.goto(base);
+  await phone.page.getByText("Your vault is empty").waitFor();
+  const vaultChooser = phone.page.waitForEvent("filechooser");
+  await phone.page.getByRole("button", { name: "Import a file" }).click();
+  await (await vaultChooser).setFiles(vaultPath);
+  await phone.page.getByText("Bram Hollis").first().waitFor();
+  check(true, "a player's backup restores their characters on a new phone");
+  await phone.context.close();
+
   check(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(" | ")}` : ""}`);
   console.log(`\nAll table checks passed. Screenshots in ${SHOTS}`);
 } catch (e) {

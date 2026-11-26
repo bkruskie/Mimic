@@ -1,4 +1,5 @@
-import { importCharacter, newId, type Character } from "@mimicbox/ruleset-dnd5e";
+import { exportVaultBackup, importVaultBackup, newId, type Character } from "@mimicbox/ruleset-dnd5e";
+import { downloadJson } from "../lib/download";
 import { useRef, useState } from "react";
 import { go } from "../App";
 import { content, summaryFor, useApp } from "../lib/state";
@@ -18,14 +19,24 @@ export function VaultScreen() {
     setImportError(null);
     try {
       const raw = JSON.parse(await file.text());
-      let c = importCharacter(raw, content);
-      if (entries.some((e) => e.id === c.id)) c = { ...c, id: newId(), name: `${c.name} (copy)` };
-      await vault!.put(c, summaryFor(c));
+      const { characters, problems } = importVaultBackup(raw, content);
+      for (let c of characters) {
+        if (entries.some((e) => e.id === c.id)) c = { ...c, id: newId(), name: `${c.name} (copy)` };
+        await vault!.put(c, summaryFor(c));
+      }
       await refresh();
-      toast(`Imported ${c.name}`);
+      if (characters.length) toast(characters.length === 1 ? `Imported ${characters[0]!.name}` : `Imported ${characters.length} characters`);
+      if (problems.length) setImportError(`Some characters weren't imported. ${problems.join(" ")}`);
     } catch (e) {
       setImportError(e instanceof SyntaxError ? "That file isn't valid JSON, so it can't be a character file." : (e as Error).message);
     }
+  }
+
+  async function backUpAll() {
+    const all = await Promise.all(entries.map((e) => vault!.get<Character>(e.id)));
+    const characters = all.filter((e): e is NonNullable<typeof e> => Boolean(e)).map((e) => e.doc);
+    downloadJson(exportVaultBackup(characters, content), `Mimic Box backup ${new Date().toISOString().slice(0, 10)}.mimicbox-backup`);
+    toast(`Backed up ${characters.length} character${characters.length === 1 ? "" : "s"}`);
   }
 
   async function openTrash() {
@@ -57,10 +68,15 @@ export function VaultScreen() {
         <button className="btn" onClick={() => go({ name: "join", code: null })} disabled={!vault}>
           Join a game
         </button>
+        {entries.length > 0 && (
+          <button className="btn" onClick={() => void backUpAll()}>
+            Back up all characters
+          </button>
+        )}
         <input
           ref={fileInput}
           type="file"
-          accept=".mimicbox-character,.json,application/json"
+          accept=".mimicbox-character,.mimicbox-backup,.json,application/json"
           hidden
           onChange={(e) => {
             const f = e.target.files?.[0];
