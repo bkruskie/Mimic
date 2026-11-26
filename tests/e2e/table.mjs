@@ -436,6 +436,8 @@ try {
   await laptop.page.getByRole("heading", { name: "The Sunken Bell" }).waitFor();
   const moved = await text(laptop.page);
   check(/Wren Ashdown/.test(moved) && /Bram Hollis/.test(moved) && /Imported\. Send your players the invite link/.test(moved), "the other computer opens the campaign with its party");
+  const laptopWorld = await laptop.page.getByRole("region", { name: "World" }).innerText();
+  check(/Port Ashen/.test(laptopWorld) && /Mara the ferrywoman/.test(laptopWorld) && /The Drowned Vault/.test(laptopWorld), "with its world notes, secrets included");
   await laptop.page.getByRole("button", { name: /^docks/ }).click();
   await eventually(async () => (await laptop.page.getByRole("img", { name: "docks, as you see it" }).locator(".map-surface > img").count()) === 6, "the map and all six of its tiles come along");
   await laptop.context.close();
@@ -455,6 +457,36 @@ try {
   await phone.page.getByText("Bram Hollis").first().waitFor();
   check(true, "a player's backup restores their characters on a new phone");
   await phone.context.close();
+
+  // ----- A DM prepares with no connection at all -----
+  const cabin = await device("DM, no connection", { width: 1280, height: 800 });
+  const studioUrl = `${base}studio.html?relay=${encodeURIComponent(relayUrl)}`;
+  await cabin.page.goto(studioUrl);
+  await cabin.page.evaluate(() => navigator.serviceWorker.ready);
+  await cabin.page.reload();
+  check(await cabin.page.evaluate(() => !!navigator.serviceWorker.controller), "the studio installs itself for offline use");
+  await cabin.context.setOffline(true);
+  await cabin.page.reload();
+  await cabin.page.getByLabel("Campaign name").fill("Snowbound");
+  await cabin.page.getByRole("button", { name: "Create campaign" }).click();
+  await cabin.page.getByRole("heading", { name: "Snowbound" }).waitFor();
+  const cabinText = await cabin.page.locator("body").innerText();
+  check(/You're offline\. Keep preparing/.test(cabinText), `offline, the studio says so and keeps working${/You're offline/.test(cabinText) ? "" : `: ${cabinText.slice(0, 200)}`}`);
+  const cabinWorld = cabin.page.getByRole("region", { name: "World" });
+  const cabinEntry = cabin.page.getByRole("form", { name: "World entry" });
+  await cabinWorld.getByRole("button", { name: "New place" }).click();
+  await cabinEntry.getByLabel("Place name").fill("Hollow Keep");
+  await cabinEntry.getByLabel("Paragraph 1").fill("A keep buried to its battlements in snow.");
+  await cabinEntry.getByRole("button", { name: "Save place" }).click();
+  await shot(cabin.page, "dm-offline");
+  await cabin.page.waitForTimeout(500);
+  await cabin.page.reload();
+  if (await cabin.page.getByRole("heading", { name: "Snowbound" }).count() === 0) await cabin.page.getByRole("button", { name: /Snowbound/ }).click();
+  await cabinWorld.getByText("Hollow Keep").waitFor();
+  check(true, "the world prepared offline is still there after a reload");
+  await cabin.context.setOffline(false);
+  await eventually(async () => (await cabin.page.getByRole("textbox", { name: "Invite link" }).count()) > 0, "back online, hosting starts and the invite link appears");
+  await cabin.context.close();
 
   check(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(" | ")}` : ""}`);
   console.log(`\nAll table checks passed. Screenshots in ${SHOTS}`);

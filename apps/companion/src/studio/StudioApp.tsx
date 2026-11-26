@@ -200,6 +200,8 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
                   ? `Hosting. ${here} of ${members.length} player${members.length === 1 ? "" : "s"} here.`
                   : host.status === "starting"
                     ? "Starting to host…"
+                    : host.status === "offline"
+                      ? "You're offline. Keep preparing: everything saves on this computer. Players can join when you're back online."
                     : "Couldn't reach the signalling networks. Check this device is online, then reload the page."}
               </div>
             </div>
@@ -298,7 +300,7 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
                   </div>
                 </>
               ) : (
-                <p className="muted">Preparing the invite link…</p>
+                <p className="muted">{host.status === "offline" ? "The invite link appears when this computer is back online." : "Preparing the invite link…"}</p>
               )}
             </section>
             <DmDice onRoll={(r) => update((c) => ({ ...c, ...addDmRoll(c, r, newId) }))} />

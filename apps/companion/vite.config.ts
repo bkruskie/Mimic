@@ -33,6 +33,8 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         navigateFallback: "index.html",
         navigateFallbackDenylist: [/studio\.html/, /display\.html/],
+        // A self-hosted relay is given as ?relay=…; the page is the same one, so serve it from the cache offline too.
+        ignoreURLParametersMatching: [/^utm_/, /^fbclid$/, /^relay$/],
       },
     }),
   ],

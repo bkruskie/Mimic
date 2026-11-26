@@ -19,6 +19,7 @@ A free, local-first tabletop roleplaying platform. Players keep their characters
 - Combat: the DM starts a fight with the party, adds creatures (hidden or not) and steps through turns; players roll initiative from their sheet and see when it's their turn.
 - Handouts: the DM writes letters and clues in private and shows them to the party and the table display when ready.
 - World notes: places, people, factions, quests and lore, nested by place. Each paragraph has its own reveal switch, so players read what they have learned in their journal and never the DM's secrets.
+- Prepare anywhere: after one visit the studio works with no connection. Everything saves on your computer, and hosting starts when you're back online.
 - Backups: the DM downloads a campaign file to keep or move to another computer; players back up every character in one file.
 - Inventory with equip toggles and SRD item lookup, coins, notes and a portrait.
 - Characters live in a vault on the device (IndexedDB), with a trash you can restore from, and export or import as `.mimicbox-character` files.
