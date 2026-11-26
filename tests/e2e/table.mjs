@@ -210,6 +210,72 @@ try {
   await dm.page.getByRole("button", { name: "End combat" }).first().click();
   await eventually(async () => (await alice.page.locator(".combat-banner").count()) === 0, "ending combat clears it from Alice's sheet");
 
+  // ----- Maps: fog of war, tokens, the display -----
+  const mapChooser = dm.page.waitForEvent("filechooser");
+  await dm.page.getByRole("button", { name: "Add a map" }).click();
+  await (await mapChooser).setFiles(join(FIXTURES, "docks.png"));
+  await dm.page.getByRole("button", { name: /^docks/ }).waitFor({ timeout: 20000 });
+  // Line the grid up with the 100-pixel squares drawn on this map.
+  await dm.page.getByText("Grid", { exact: true }).click();
+  await dm.page.getByLabel("Square size (px)").fill("100");
+  await dm.page.getByRole("button", { name: "Apply grid" }).click();
+  await dm.page.getByLabel("Creature token").fill("Spy");
+  await dm.page.getByRole("checkbox", { name: "Hidden" }).last().check();
+  await dm.page.getByRole("button", { name: "Add token" }).click();
+  // Reveal the top-left two squares by dragging across them.
+  await dm.page.getByRole("button", { name: "Reveal squares" }).click();
+  const dmSurface = dm.page.getByRole("img", { name: "docks, as you see it" }).locator(".map-surface");
+  const box = await dmSurface.boundingBox();
+  const k = box.width / 1100;
+  await dm.page.mouse.move(box.x + 50 * k, box.y + 50 * k);
+  await dm.page.mouse.down();
+  await dm.page.mouse.move(box.x + 150 * k, box.y + 50 * k, { steps: 5 });
+  await dm.page.mouse.up();
+  check(/2 of 66 squares revealed/.test(await text(dm.page)), "the DM reveals two squares by dragging");
+  await dm.page.getByRole("button", { name: "Show this map to players" }).click();
+  await shot(dm.page, "dm-map");
+
+  await eventually(async () => (await alice.page.getByRole("button", { name: "Map", exact: true }).count()) > 0, "Alice's sheet offers the map");
+  await alice.page.getByRole("button", { name: "Map", exact: true }).click();
+  const aliceMap = alice.page.getByRole("img", { name: "docks, the parts you can see" });
+  await eventually(async () => (await aliceMap.locator(".map-surface > img").count()) === 1, "Alice receives only the one tile with revealed squares");
+  const pixel = async (x, y) =>
+    aliceMap.locator(".map-surface > img").evaluate(
+      (img, [px, py]) => {
+        const c = document.createElement("canvas");
+        c.width = img.naturalWidth;
+        c.height = img.naturalHeight;
+        const ctx = c.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+        return [...ctx.getImageData(px, py, 1, 1).data.slice(0, 3)];
+      },
+      [x, y],
+    );
+  await alice.page.waitForTimeout(500);
+  const secret = await pixel(350, 330);
+  const open = await pixel(50, 50);
+  check(secret[0] < 60 && secret[1] < 60, `the fogged square's pixels are painted over before they reach Alice (got rgb ${secret.join(",")})`);
+  check(open[0] > 120, `the revealed square shows the map (rgb ${open.join(",")})`);
+  check((await aliceMap.getByRole("button", { name: /Spy/ }).count()) === 0, "the hidden Spy token never reaches Alice");
+  // Alice moves her token one square right.
+  const token = aliceMap.getByRole("button", { name: "Wren Ashdown" });
+  const tb = await token.boundingBox();
+  const ak = (await aliceMap.locator(".map-surface").boundingBox()).width / 1100;
+  await alice.page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2);
+  await alice.page.mouse.down();
+  await alice.page.mouse.move(tb.x + tb.width / 2 + 100 * ak, tb.y + tb.height / 2, { steps: 5 });
+  await alice.page.mouse.up();
+  await shot(alice.page, "alice-map");
+  const dmToken = dm.page.getByRole("img", { name: "docks, as you see it" }).getByRole("button", { name: "Wren Ashdown" });
+  await eventually(async () => {
+    const b = await dmToken.boundingBox();
+    return b.x - box.x > 100 * k;
+  }, "Alice's move shows on the DM's map");
+  await alice.page.keyboard.press("Escape");
+  await eventually(async () => (await display.locator(".display-map .map-surface > img").count()) === 1, "the display shows the revealed part of the map");
+  check((await display.getByRole("button", { name: /Spy/ }).count()) === 0, "without the hidden Spy");
+  await shot(display, "display-map");
+
   // ----- The DM changes a player's sheet: damage, healing, conditions -----
   await dm.page.getByLabel("Amount for Wren Ashdown").fill("4");
   await dm.page.getByRole("group", { name: "Change Wren Ashdown's hit points" }).getByRole("button", { name: "Damage" }).click();
@@ -272,6 +338,8 @@ try {
   await laptop.page.getByRole("heading", { name: "The Sunken Bell" }).waitFor();
   const moved = await text(laptop.page);
   check(/Wren Ashdown/.test(moved) && /Bram Hollis/.test(moved) && /Imported\. Send your players the invite link/.test(moved), "the other computer opens the campaign with its party");
+  await laptop.page.getByRole("button", { name: /^docks/ }).click();
+  await eventually(async () => (await laptop.page.getByRole("img", { name: "docks, as you see it" }).locator(".map-surface > img").count()) === 6, "the map and all six of its tiles come along");
   await laptop.context.close();
 
   const [vaultFile] = await Promise.all([bob.page.waitForEvent("download"), (async () => {

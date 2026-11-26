@@ -4,6 +4,7 @@
  */
 import { CharacterImportError, derive, importCharacter, type Character, type Content } from "@mimicbox/ruleset-dnd5e";
 import { publicCombat, setMemberInitiative, type Combat } from "./combat.js";
+import { activeMap, movePlayerToken, publicMap, type MapScene } from "./map.js";
 import {
   PROTOCOL_VERSION,
   parsePlayerMessage,
@@ -54,6 +55,9 @@ export interface HostCampaign {
   handouts?: Handout[];
   /** The fight in progress, if any. */
   combat?: Combat | null;
+  /** Battle maps, and the one players see. */
+  maps?: MapScene[];
+  activeMapId?: string | null;
   /** Recently applied command ids, per member. */
   seen: Record<string, string[]>;
   createdAt: string;
@@ -122,6 +126,13 @@ export function handlePlayerMessage(campaign: HostCampaign, from: string, raw: u
     }
     const next = { ...campaign, members: { ...campaign.members, [from]: { ...member, character } } };
     return { campaign: touch(remember(next, from, m.commandId)), replies: [{ to: from, msg: msg({ t: "ack", commandId: m.commandId }) }], changed: true };
+  }
+
+  if (m.t === "move") {
+    const next = movePlayerToken(campaign, from, m.tokenId, m.x, m.y);
+    const acked = { to: from, msg: msg({ t: "ack", commandId: m.commandId }) };
+    // A refused move still sends everyone a fresh view, so the player's token snaps back.
+    return { campaign: touch(remember(next ?? campaign, from, m.commandId)), replies: [acked], changed: true };
   }
 
   if (m.t === "initiative") {
@@ -208,12 +219,14 @@ function party(campaign: HostCampaign, connected: ReadonlySet<string>, content: 
 }
 
 /** Players see the party's summaries and public rolls only: never DM-only rolls or other players' full sheets. */
-export function playerView(campaign: HostCampaign, connected: ReadonlySet<string>, content: Content): HostMessage[] {
+export function playerView(campaign: HostCampaign, connected: ReadonlySet<string>, content: Content, viewer: string | null = null): HostMessage[] {
+  const map = activeMap(campaign);
   return [
     msg({ t: "party", members: party(campaign, connected, content) }),
     msg({ t: "rolls", rolls: campaign.rolls.filter((r) => r.visibility === "public").slice(-30) }),
     msg({ t: "handouts", handouts: revealedHandouts(campaign) }),
     msg({ t: "combat", combat: publicCombat(campaign) }),
+    msg({ t: "map", map: map ? publicMap(map, viewer) : null }),
   ];
 }
 
@@ -227,6 +240,10 @@ export function displayView(campaign: HostCampaign, connected: ReadonlySet<strin
     rolls: campaign.rolls.filter((r) => r.visibility === "public").slice(-12),
     spotlight: revealedHandouts(campaign).at(-1) ?? null,
     combat: publicCombat(campaign),
+    map: (() => {
+      const m = activeMap(campaign);
+      return m ? publicMap(m, null) : null;
+    })(),
   };
 }
 

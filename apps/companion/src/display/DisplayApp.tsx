@@ -3,18 +3,21 @@
  * player-safe view and never sends anything but a request for the current view.
  */
 import { displayChannelName, type DisplayView } from "@mimicbox/table";
+import { MapView } from "../components/MapView";
 import { useEffect, useState } from "react";
 import { Markdown } from "../lib/markdown";
 
 export function DisplayApp() {
   const campaignId = location.hash.replace(/^#/, "");
   const [view, setView] = useState<DisplayView | null>(null);
+  const [tiles, setTiles] = useState<Map<string, string>>(new Map());
   useEffect(() => {
     if (!campaignId) return;
     const ch = new BroadcastChannel(displayChannelName(campaignId));
     ch.onmessage = (e) => {
-      const d = e.data as DisplayView;
+      const d = e.data as DisplayView | { t: "tile"; mapId: string; tx: number; ty: number; version: string; data: string };
       if (d?.t === "display" && Array.isArray(d.members)) setView(d);
+      else if (d?.t === "tile" && typeof d.data === "string" && d.data.startsWith("data:image/")) setTiles((prev) => new Map(prev).set(`${d.mapId}:${d.tx}:${d.ty}:${d.version}`, d.data));
     };
     ch.postMessage({ t: "display-hello" });
     return () => ch.close();
@@ -37,6 +40,20 @@ export function DisplayApp() {
           Full screen
         </button>
       </header>
+      {view.map && (
+        <section className="display-map" aria-label="Map">
+          <MapView
+            label={view.map.name}
+            map={view.map}
+            fit="contain"
+            tokens={view.map.tokens}
+            tiles={view.map.tiles.flatMap((t) => {
+              const url = tiles.get(`${view.map!.id}:${t.tx}:${t.ty}:${t.version}`);
+              return url ? [{ tx: t.tx, ty: t.ty, url }] : [];
+            })}
+          />
+        </section>
+      )}
       <div className="display-body">
         {view.combat && (
           <section aria-label="Initiative" className="display-combat">

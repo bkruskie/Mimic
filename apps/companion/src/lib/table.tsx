@@ -15,6 +15,7 @@ import {
   type PartyMember,
   type PlayerMessage,
   type PublicCombat,
+  type PublicMap,
   type Effect,
   type PublicHandout,
   type SharedRoll,
@@ -46,6 +47,10 @@ interface TableState {
   combat: PublicCombat | null;
   /** This device's identity in the game, from the DM's welcome. */
   memberId: string | null;
+  /** The map in play, and the tiles received for it so far. */
+  map: PublicMap | null;
+  mapTiles: { tx: number; ty: number; url: string }[];
+  moveToken: (tokenId: string, x: number, y: number) => void;
   join: (seat: Seat) => Promise<void>;
   leave: () => Promise<void>;
   shareCharacter: (c: Character) => void;
@@ -64,6 +69,8 @@ export function TableProvider({ children }: { children: ReactNode }) {
   const [handouts, setHandouts] = useState<PublicHandout[]>([]);
   const [combat, setCombat] = useState<PublicCombat | null>(null);
   const [memberId, setMemberId] = useState<string | null>(null);
+  const [map, setMap] = useState<PublicMap | null>(null);
+  const [tileStore, setTileStore] = useState<Map<string, string>>(new Map());
   const effectHandler = useRef<((e: Effect) => void) | null>(null);
   const appliedEffects = useRef(new Set<string>());
   const setEffectHandler = useCallback((h: ((e: Effect) => void) | null) => {
@@ -159,6 +166,12 @@ export function TableProvider({ children }: { children: ReactNode }) {
         } else if (m.t === "party") setParty(m.members);
         else if (m.t === "rolls") setRolls(m.rolls);
         else if (m.t === "combat") setCombat(m.combat);
+        else if (m.t === "map") {
+          setMap(m.map);
+          // Keep only tiles of the current versions; older ones show squares that have changed.
+          const keep = new Set((m.map?.tiles ?? []).map((t) => `${m.map!.id}:${t.tx}:${t.ty}:${t.version}`));
+          setTileStore((prev) => new Map([...prev].filter(([k]) => keep.has(k))));
+        } else if (m.t === "tile") setTileStore((prev) => new Map(prev).set(`${m.mapId}:${m.tx}:${m.ty}:${m.version}`, m.data));
         else if (m.t === "effect") {
           if (appliedEffects.current.has(m.effectId)) return;
           appliedEffects.current.add(m.effectId);
@@ -201,6 +214,8 @@ export function TableProvider({ children }: { children: ReactNode }) {
       setRolls([]);
       setHandouts([]);
       setCombat(null);
+      setMap(null);
+      setTileStore(new Map());
       await vault?.setSetting(SEAT_SETTING, next);
       setSeat(next);
     },
@@ -216,6 +231,8 @@ export function TableProvider({ children }: { children: ReactNode }) {
     setRolls([]);
     setHandouts([]);
     setCombat(null);
+    setMap(null);
+    setTileStore(new Map());
   }, [vault]);
 
   const shareCharacter = useCallback(
@@ -235,9 +252,27 @@ export function TableProvider({ children }: { children: ReactNode }) {
     [enqueue, combat, memberId],
   );
 
+  const mapTiles = useMemo(
+    () =>
+      (map?.tiles ?? []).flatMap((t) => {
+        const url = tileStore.get(`${map!.id}:${t.tx}:${t.ty}:${t.version}`);
+        return url ? [{ tx: t.tx, ty: t.ty, url }] : [];
+      }),
+    [map, tileStore],
+  );
+
+  const moveToken = useCallback(
+    (tokenId: string, x: number, y: number) => {
+      // Move it here at once; the DM's answer confirms it or puts it back.
+      setMap((m) => (m ? { ...m, tokens: m.tokens.map((t) => (t.id === tokenId ? { ...t, x, y } : t)) } : m));
+      enqueue({ t: "move", v: PROTOCOL_VERSION, commandId: newId(), tokenId, x, y });
+    },
+    [enqueue],
+  );
+
   const value = useMemo<TableState>(
-    () => ({ seat, invite, status, problem, party, rolls, handouts, combat, memberId, join, leave, shareCharacter, shareRoll, setEffectHandler }),
-    [seat, invite, status, problem, party, rolls, handouts, combat, memberId, join, leave, shareCharacter, shareRoll, setEffectHandler],
+    () => ({ seat, invite, status, problem, party, rolls, handouts, combat, memberId, map, mapTiles, moveToken, join, leave, shareCharacter, shareRoll, setEffectHandler }),
+    [seat, invite, status, problem, party, rolls, handouts, combat, memberId, map, mapTiles, moveToken, join, leave, shareCharacter, shareRoll, setEffectHandler],
   );
   return <TableContext.Provider value={value}>{children}</TableContext.Provider>;
 }
