@@ -54,6 +54,9 @@ export function VaultScreen() {
         <button className="btn" onClick={() => fileInput.current?.click()} disabled={!vault}>
           Import a file
         </button>
+        <button className="btn" onClick={() => go({ name: "join", code: null })} disabled={!vault}>
+          Join a game
+        </button>
         <input
           ref={fileInput}
           type="file"

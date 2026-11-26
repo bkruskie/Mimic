@@ -1,0 +1,116 @@
+{
+  "format": "mimicbox-character",
+  "formatVersion": 1,
+  "exportedAt": "2026-11-26T19:48:38.318Z",
+  "attribution": "This work includes material from the System Reference Document 5.2.1 (“SRD 5.2.1”) by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.",
+  "character": {
+    "id": "aaa2a3fc-3482-44e4-a011-f362fe6e0d5a",
+    "ruleset": "dnd5e-2024",
+    "schemaVersion": 2,
+    "createdAt": "2026-11-26T19:48:38.315Z",
+    "updatedAt": "2026-11-26T19:48:38.318Z",
+    "name": "Wren Ashdown",
+    "playerName": "",
+    "portrait": null,
+    "build": {
+      "abilityMethod": "manual",
+      "baseAbilities": {
+        "str": 15,
+        "dex": 14,
+        "con": 13,
+        "int": 10,
+        "wis": 12,
+        "cha": 8
+      },
+      "species": {
+        "id": "human",
+        "size": "medium",
+        "option": null,
+        "spellAbility": null,
+        "skill": null
+      },
+      "background": {
+        "id": "soldier",
+        "abilityIncreases": {
+          "str": 2,
+          "con": 1
+        }
+      },
+      "classes": [
+        {
+          "id": "fighter",
+          "level": 1,
+          "subclass": null,
+          "skills": [],
+          "expertise": [],
+          "hitPointRolls": [],
+          "choices": {},
+          "weaponMasteries": []
+        }
+      ],
+      "feats": [
+        {
+          "id": "savage-attacker",
+          "source": "background"
+        }
+      ],
+      "languages": "Common",
+      "toolNotes": ""
+    },
+    "spells": {
+      "cantrips": [],
+      "prepared": []
+    },
+    "inventory": [
+      {
+        "id": "abd4dc62-8ea3-467a-a36f-be0ec3603953",
+        "ref": {
+          "kind": "armor",
+          "id": "chain-mail"
+        },
+        "name": "Chain Mail",
+        "quantity": 1,
+        "equipped": true
+      },
+      {
+        "id": "d0f0841a-c4c6-4703-ae8f-364ef0f5fd68",
+        "ref": {
+          "kind": "weapon",
+          "id": "longsword"
+        },
+        "name": "Longsword",
+        "quantity": 1,
+        "equipped": true
+      }
+    ],
+    "currency": {
+      "cp": 0,
+      "sp": 0,
+      "ep": 0,
+      "gp": 0,
+      "pp": 0
+    },
+    "state": {
+      "hp": 11,
+      "tempHp": 0,
+      "deathSaves": {
+        "successes": 0,
+        "failures": 0
+      },
+      "hitDiceSpent": 0,
+      "slotsSpent": [],
+      "pactSlotsSpent": 0,
+      "resourcesSpent": {},
+      "conditions": [],
+      "exhaustion": 0,
+      "heroicInspiration": false,
+      "concentratingOn": null
+    },
+    "notes": {
+      "appearance": "",
+      "personality": "",
+      "backstory": "",
+      "other": ""
+    }
+  }
+}

@@ -993,3 +993,221 @@ details.feature[open] {
     justify-content: start;
   }
 }
+
+/* ---------- at a DM's table ---------- */
+.chip-table {
+  border-color: var(--seam);
+}
+.chip-table.connected {
+  border-color: var(--moss);
+  color: var(--bone);
+}
+.chip-table.connected::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--moss);
+}
+.chip-table.denied,
+.chip-table.error {
+  border-color: var(--tongue);
+}
+
+/* ---------- DM page ---------- */
+.studio-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 900px) {
+  .studio-grid {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+}
+.member {
+  margin-top: 10px;
+}
+.member-name {
+  font-family: var(--font-display);
+  font-size: var(--t-lg);
+}
+.presence {
+  font-size: var(--t-sm);
+  color: var(--bone-dim);
+}
+.presence.here {
+  color: var(--moss);
+}
+.member-vitals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-top: 10px;
+}
+.member-vitals > div {
+  display: grid;
+  gap: 2px;
+  min-width: 64px;
+}
+.member-vitals > div:first-child {
+  flex: 1 1 160px;
+}
+.member-vitals .label {
+  font-size: var(--t-xs);
+  color: var(--bone-dim);
+}
+.member-vitals .value {
+  font-family: var(--font-display);
+  font-size: var(--t-xl);
+  color: var(--brass);
+  line-height: 1.1;
+}
+.member-vitals .value small {
+  font-size: var(--t-sm);
+  color: var(--bone-dim);
+}
+.hp-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--hollow);
+  overflow: hidden;
+}
+.hp-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--moss);
+}
+.hp-bar > span.low {
+  background: var(--tongue);
+}
+.invite {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+  margin-top: 12px;
+}
+.qr {
+  width: 168px;
+  flex: none;
+  background: #fff;
+  border-radius: var(--r-md);
+  padding: 6px;
+}
+.qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* ---------- table display ---------- */
+.display {
+  min-height: 100vh;
+  padding: clamp(20px, 3vw, 48px);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.display.idle {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--bone-dim);
+}
+.display.idle img {
+  width: 96px;
+  opacity: 0.8;
+}
+.display-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.display-head h1 {
+  font-size: clamp(28px, 3vw, 52px);
+}
+.display-body {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 900px) {
+  .display-body {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+}
+.display-party {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  align-content: start;
+}
+.display-card {
+  background: var(--lid);
+  border-radius: var(--r-lg);
+  padding: 18px 20px;
+}
+.display-card.away {
+  opacity: 0.55;
+}
+.display-card h2 {
+  font-size: clamp(22px, 2vw, 32px);
+}
+.display-card p {
+  margin: 4px 0 10px;
+}
+.hp-bar.big {
+  height: 12px;
+  border-radius: 6px;
+}
+.display-stats {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-display);
+  font-size: clamp(18px, 1.6vw, 26px);
+}
+.display-conditions {
+  color: var(--tongue);
+}
+.display-latest {
+  background: var(--lid);
+  border-radius: var(--r-lg);
+  padding: 20px;
+  display: grid;
+  gap: 4px;
+}
+.display-total {
+  font-family: var(--font-display);
+  font-size: clamp(64px, 8vw, 128px);
+  line-height: 1;
+  color: var(--brass);
+}
+.display-latest.crit .display-total {
+  color: var(--moss);
+}
+.display-latest.fumble .display-total {
+  color: var(--tongue);
+}
+.display-rolls ul {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  gap: 8px;
+  color: var(--bone-dim);
+}
+.display-rolls li strong {
+  color: var(--bone);
+  font-family: var(--font-display);
+  margin-right: 6px;
+}
+.display-latest > span:last-child {
+  font-size: clamp(18px, 1.8vw, 30px);
+}
+.display-rolls li {
+  font-size: clamp(16px, 1.3vw, 22px);
+}
+.display-card .muted {
+  font-size: clamp(14px, 1.1vw, 18px);
+}

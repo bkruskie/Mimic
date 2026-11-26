@@ -1,0 +1,19 @@
+{
+  "name": "@mimicbox/table",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Connecting player sheets to a DM's game: protocol, invites, host logic and the peer-to-peer link.",
+  "dependencies": {
+    "@mimicbox/ruleset-dnd5e": "workspace:*",
+    "@trystero-p2p/ws-relay": "0.27.0",
+    "trystero": "0.27.0"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "devDependencies": {
+    "ws": "8.18.3"
+  }
+}

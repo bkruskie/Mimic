@@ -137,9 +137,9 @@ Game data flows only between each device and the DM's host, encrypted. Public si
 
 | Experience | Runs on | Audience it receives | Connects by | Can do |
 | --- | --- | --- | --- | --- |
-| DM Studio | Tauri desktop app (Windows, macOS, Linux) | DM: everything, including secrets | Loopback channel with a local secret | Prepare, edit, run the session, reveal, override |
+| DM Studio | A page of the web app, `studio.html`, in any modern browser (ADR 0005); a desktop app later | DM: everything, including secrets | It is the host | Prepare, edit, run the session, reveal, override |
 | Player Companion | Browser or installed PWA on phone, tablet, laptop | Player: own characters, revealed content, player-visible map | WebRTC from the Mimic Box web app, or LAN fallback | Act for own characters, roll, move own tokens, journal |
-| Tabletop Display | A second Tauri window on the TV/projector, or any browser (smart TV, spare laptop) with a display code | Display profile: a chosen layout of player-visible state only | Loopback (local window) or WebRTC (remote screen) | Nothing. It is read-only and cannot send game commands |
+| Tabletop Display | `display.html` in a second window on the DM's device (TV, projector); remote screens later | Display profile: a chosen layout of player-visible state only | Same-device channel (`BroadcastChannel`); WebRTC for remote screens later | Nothing. It is read-only and cannot send game commands |
 
 The display is not a mirror. It is a separate client with its own credential and its own camera (pan, zoom, layout), and the host builds its view from scratch. A DM can run several displays with different profiles, for example the battle map on the table and an initiative strip on a wall TV.
 
@@ -454,18 +454,18 @@ Revealing is a command, not a toggle in the interface: it changes the grant, the
 
 The kit's ten cases are kept and extended. Each runs against real projected payloads, not the interface:
 
-- [ ] Player requests a DM-only layer, entry block, token or roll: nothing secret in any response
-- [ ] Display connection sends any command: rejected, state unchanged
+- [ ] Player requests a DM-only layer, entry block, token or roll: nothing secret in any response (rolls and private character notes tested in Phase 3; the rest arrive with maps and the world)
+- [x] Display connection sends any command: rejected, state unchanged (the display has no command path)
 - [ ] Player moves another player's token or edits another character: rejected unless granted
-- [ ] Revoked invite or removed member reconnects: denied
-- [ ] Duplicate command resent after a dropped connection: applied once
-- [ ] Malformed, oversized or out-of-order messages: rejected safely, no crash
+- [x] Revoked invite or removed member reconnects: denied (a replaced link finds no game; a removed member's commands are ignored)
+- [x] Duplicate command resent after a dropped connection: applied once
+- [x] Malformed, oversized or out-of-order messages: rejected safely, no crash
 - [ ] Asset request by guessed hash or path traversal: denied
 - [ ] Guessed session code or route: reveals no campaign details
 - [ ] Fog reveal: tiles outside the revealed area never sent
 - [ ] Token walks into fog: removed from player views, position not leaked
-- [ ] A signalling relay swaps in a fake host: player refuses, fingerprint mismatch
-- [ ] A signalling relay reads the introductions: they are encrypted with the room key
+- [x] A signalling relay swaps in a fake host: player refuses, fingerprint mismatch (players accept only the invite's host identity, which Trystero binds to the connection certificate)
+- [x] A signalling relay reads the introductions: they are encrypted with the room key
 - [ ] Backup restore: campaign, assets and references restored and checksums match
 
 ## Implementation roadmap
@@ -501,7 +501,7 @@ Gate: a player builds a level 1 character on a phone in airplane mode, plays a r
 ### Phases 2 to 8
 
 - **Phase 2, character sheet depth**: homebrew features, attacks, bonuses and subclasses (done); levels 6 to 20 and multiclassing (done); the Pathfinder 2e ruleset and sheet; desktop and tablet layouts; linking a second device. Gate: one app holds a 5e and a PF2e character, both matching reference sheets.
-- **Phase 3, connect to the table**: the kit's first vertical slice, with real characters. The DM desktop app hosts; players join by link or QR code from their sheet; the DM sees the party's sheets and shared rolls; a test token syncs; a separate display window shows only player-safe state; reconnects never repeat an action. Gate: the kit's definition of done, met on genuinely separate networks with no Mimic Box server.
+- **Phase 3, connect to the table** (first slice done, ADR 0005): the kit's first vertical slice, with real characters. The DM's browser page hosts; players join by link or QR code from their sheet; the DM sees the party's sheets and shared rolls; a test token syncs; a separate display window shows only player-safe state; reconnects never repeat an action. Gate: the kit's definition of done, met on genuinely separate networks with no Mimic Box server.
 - **Phase 4, campaign and world**: campaign library, asset import, the world wiki with per-block visibility, journals and handouts, LAN fallback, backups and restore. Gate: a DM preps a world fully offline, and a backup restores on another computer.
 - **Phase 5, tabletop MVP**: maps, square, hex and gridless grids, layers, tokens with control rules, walls and doors, tiled fog reveal, measuring. Gate: players see only permitted content and move only their tokens; the phone benchmark passes.
 - **Phase 6, encounters and planning**: adventures, scenes, encounter builder, initiative, conditions pushed to sheets, combat log, session recap. Gate: a real session runs without external tools.
