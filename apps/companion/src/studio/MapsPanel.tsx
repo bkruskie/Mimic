@@ -6,14 +6,18 @@ import { newId } from "@mimicbox/ruleset-dnd5e";
 import {
   addMap,
   columns,
+  cycleDoor,
+  explore,
   removeMap,
   removeToken,
   revealAll,
   rows,
   saveToken,
   setActiveMap,
+  setExplore,
   setGrid,
   setRevealed,
+  setWalls,
   type MapScene,
   type Token,
 } from "@mimicbox/table";
@@ -107,6 +111,9 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
   const [confirmDelete, setConfirmDelete] = useState(false);
   const live = campaign.activeMapId === map.id;
   const revealed = useMemo(() => new Set(map.revealed), [map.revealed]);
+  const walls = useMemo(() => new Set(map.walls ?? []), [map.walls]);
+  const exploring = map.explore?.on ?? false;
+  const [radius, setRadius] = useState(String(map.explore?.radius ?? 0));
   const missingParty = Object.values(campaign.members).filter((m) => m.character && !map.tokens.some((t) => t.memberId === m.userId));
 
   useEffect(() => {
@@ -139,6 +146,10 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
             ["move", "Move tokens"],
             ["reveal", "Reveal squares"],
             ["hide", "Hide squares"],
+            ["wall", "Draw walls"],
+            ["door", "Doors"],
+            ["erase", "Erase walls"],
+            ["measure", "Measure"],
           ] as const
         ).map(([t, name]) => (
           <button key={t} className="chip" aria-pressed={tool === t} onClick={() => setTool(t)}>
@@ -153,7 +164,18 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
         </button>
       </div>
       <p className="muted small" style={{ margin: 0 }}>
-        {tool === "move" ? "Drag any token to a square." : tool === "reveal" ? "Drag across squares to show them to players." : "Drag across squares to hide them again."}
+        {
+          {
+            move: "Drag any token to a square.",
+            reveal: "Drag across squares to show them to players.",
+            hide: "Drag across squares to hide them again.",
+            wall: "Drag across squares that block sight. Players never see walls; they only affect exploring.",
+            door: "Tap a square to add a closed door, tap again to open it, and again to close it.",
+            erase: "Drag across walls and doors to remove them.",
+            measure: "Drag from one square to another to measure. Diagonal steps count 5 feet.",
+            view: "",
+          }[tool]
+        }
       </p>
       <MapView
         label={`${map.name}, as you see it`}
@@ -163,9 +185,40 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
         revealed={revealed}
         tool={tool}
         canMove={() => tool === "move"}
-        onMove={(t, x, y) => update((c) => ({ ...c, ...saveToken(c, map.id, { ...t, x, y }) }))}
-        onPaint={(cells, reveal) => update((c) => ({ ...c, ...setRevealed(c, map.id, cells, reveal) }))}
+        walls={walls}
+        doors={map.doors ?? []}
+        onMove={(t, x, y) => update((c) => ({ ...c, ...explore(saveToken(c, map.id, { ...t, x, y }), map.id) }))}
+        onPaint={(cells, paintTool) =>
+          update((c) => ({
+            ...c,
+            ...(paintTool === "wall" || paintTool === "erase" ? setWalls(c, map.id, cells, paintTool === "wall") : setRevealed(c, map.id, cells, paintTool === "reveal")),
+          }))
+        }
+        onDoor={(x, y) => update((c) => ({ ...c, ...cycleDoor(c, map.id, x, y) }))}
       />
+      <div className="row" style={{ alignItems: "end" }}>
+        <label className="row" style={{ alignItems: "center", gap: 8, minHeight: 44 }}>
+          <input
+            type="checkbox"
+            checked={exploring}
+            onChange={(e) => update((c) => ({ ...c, ...setExplore(c, map.id, { on: e.target.checked, radius: Number(radius) || 0 }) }))}
+          />
+          <span>Reveal as the party explores</span>
+        </label>
+        <label className="field" style={{ width: 150 }}>
+          <span>Sight in squares</span>
+          <input
+            className="input"
+            inputMode="numeric"
+            value={radius}
+            onChange={(e) => setRadius(e.target.value)}
+            onBlur={() => update((c) => ({ ...c, ...setExplore(c, map.id, { on: exploring, radius: Number(radius) || 0 }) }))}
+          />
+        </label>
+      </div>
+      <p className="muted small" style={{ margin: 0 }}>
+        When on, squares the party's tokens can see are revealed as they move. Walls and closed doors block sight; a sight of 0 means no limit. Revealed squares stay revealed.
+      </p>
       <details>
         <summary style={{ cursor: "pointer" }}>Grid</summary>
         <form
@@ -190,7 +243,7 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
           </label>
           <button className="btn">Apply grid</button>
         </form>
-        <p className="muted small">Match the squares drawn on your map. Changing the grid hides every square again.</p>
+        <p className="muted small">Match the squares drawn on your map. Changing the grid hides every square again and clears walls and doors.</p>
       </details>
       <h3>Tokens</h3>
       <ul className="rows" aria-label="Tokens">

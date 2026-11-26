@@ -1372,3 +1372,36 @@ details.feature[open] {
   grid-template-rows: 1fr auto;
 }
 .display .map-surface { margin: 0 auto; }
+.map-overlay .wall {
+  fill: rgba(201, 151, 63, 0.55);
+  stroke: var(--brass);
+  stroke-width: 2;
+}
+.map-overlay .door {
+  fill: #8a4a2a;
+  stroke: var(--bone);
+  stroke-width: 3;
+}
+.map-overlay .door.open {
+  fill: none;
+  stroke-dasharray: 8 6;
+}
+.map-overlay .paint-wall {
+  fill: rgba(201, 151, 63, 0.6);
+}
+.map-overlay .paint-erase {
+  fill: rgba(239, 228, 210, 0.35);
+}
+.map-overlay .ruler line {
+  stroke: var(--tongue);
+  stroke-linecap: round;
+}
+.map-overlay .ruler circle {
+  fill: var(--tongue);
+}
+.ruler-label {
+  margin-right: auto;
+  font-family: var(--font-display);
+  font-size: var(--t-lg);
+  color: var(--tongue);
+}

@@ -55,6 +55,7 @@ export function SheetScreen({ id }: { id: string }) {
   const [tab, setTab] = useState<Tab>(() => (sessionStorage.getItem(`tab:${id}`) as Tab | null) ?? "actions");
   const [lastAsk, setLastAsk] = useState<RollAsk | null>(null);
   const [drawer, setDrawer] = useState<"hp" | "conditions" | "dice" | "history" | "party" | "map" | null>(null);
+  const [mapTool, setMapTool] = useState<"view" | "measure">("view");
   const cols = useColumns();
   const table = useTable();
   const atTable = table.seat?.characterId === id;
@@ -266,7 +267,16 @@ export function SheetScreen({ id }: { id: string }) {
       {drawer === "party" && <PartyDrawer onClose={() => setDrawer(null)} />}
       {drawer === "map" && table.map && (
         <Drawer title={table.map.name} onClose={() => setDrawer(null)}>
+          <div className="row" role="group" aria-label="Map tool" style={{ marginBottom: 8 }}>
+            <button className="chip" aria-pressed={mapTool === "view"} onClick={() => setMapTool("view")}>
+              Move my token
+            </button>
+            <button className="chip" aria-pressed={mapTool === "measure"} onClick={() => setMapTool("measure")}>
+              Measure
+            </button>
+          </div>
           <MapView
+            tool={mapTool}
             label={`${table.map.name}, the parts you can see`}
             map={table.map}
             tiles={table.mapTiles}
@@ -274,7 +284,7 @@ export function SheetScreen({ id }: { id: string }) {
             canMove={(t) => t.memberId !== null && t.memberId === table.memberId}
             onMove={(t, x, y) => table.moveToken(t.id, x, y)}
           />
-          <p className="muted small">Drag your token to move. You see only what your DM has revealed.</p>
+          <p className="muted small">{mapTool === "measure" ? "Drag from one square to another. Diagonal steps count 5 feet." : "Drag your token to move. You see only what your DM has revealed."}</p>
         </Drawer>
       )}
       {drawer === "conditions" && <ConditionsDrawer {...props} onClose={() => setDrawer(null)} />}

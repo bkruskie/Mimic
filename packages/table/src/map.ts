@@ -35,6 +35,12 @@ export interface MapScene {
   /** Revealed squares, as row-major indexes (row × columns + column). */
   revealed: number[];
   tokens: Token[];
+  /** Squares that block sight, as row-major indexes. The DM's only: never sent. */
+  walls?: number[];
+  /** Doors block sight while closed. The DM's only: never sent. */
+  doors?: { index: number; open: boolean }[];
+  /** Reveal squares as the party's tokens come to see them. radius 0 means no limit. */
+  explore?: { on: boolean; radius: number };
 }
 
 /** What a player or display receives about the map in play. */
@@ -138,7 +144,7 @@ export function setActiveMap(c: HostCampaign, id: string | null): HostCampaign {
 export function setGrid(c: HostCampaign, id: string, grid: MapScene["grid"]): HostCampaign {
   const size = Math.max(16, Math.min(400, Math.round(grid.size)));
   // Changing the grid changes what every square covers, so the fog starts over.
-  return withMap(c, id, (m) => ({ ...m, grid: { size, offsetX: Math.max(0, Math.round(grid.offsetX)) % size, offsetY: Math.max(0, Math.round(grid.offsetY)) % size }, revealed: [] }));
+  return withMap(c, id, (m) => ({ ...m, grid: { size, offsetX: Math.max(0, Math.round(grid.offsetX)) % size, offsetY: Math.max(0, Math.round(grid.offsetY)) % size }, revealed: [], walls: [], doors: [] }));
 }
 
 export function setRevealed(c: HostCampaign, id: string, cells: { x: number; y: number }[], revealed: boolean): HostCampaign {
@@ -174,10 +180,97 @@ export function movePlayerToken(c: HostCampaign, memberId: string, tokenId: stri
   const token = m?.tokens.find((t) => t.id === tokenId);
   if (!m || !token || token.memberId !== memberId) return null;
   if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= columns(m) || y >= rows(m)) return null;
-  return saveToken(c, m.id, { ...token, x, y });
+  return explore(saveToken(c, m.id, { ...token, x, y }), m.id);
 }
 
 /** The map players see, if any. */
 export function activeMap(c: HostCampaign): MapScene | null {
   return (c.maps ?? []).find((m) => m.id === c.activeMapId) ?? null;
+}
+
+// ---------- walls, doors, measuring and exploration ----------
+
+/** Feet per square, and the SRD rule that a diagonal step costs the same as a straight one. */
+export const FEET_PER_SQUARE = 5;
+
+/** Distance in feet between two squares, counting diagonal steps as one square. */
+export function distanceFeet(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) * FEET_PER_SQUARE;
+}
+
+const blocks = (m: MapScene, i: number) => (m.walls ?? []).includes(i) || (m.doors ?? []).some((d) => d.index === i && !d.open);
+
+/**
+ * Whether square `to` can be seen from square `from`: a straight line between their centres, sampled finely, must
+ * not pass through a wall square or a closed door. The squares at either end don't block (you see the wall itself).
+ */
+export function canSee(m: MapScene, from: { x: number; y: number }, to: { x: number; y: number }): boolean {
+  const cols = columns(m);
+  const steps = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y)) * 4;
+  for (let s = 1; s < steps; s++) {
+    const t = s / steps;
+    const x = Math.floor(from.x + 0.5 + (to.x - from.x) * t);
+    const y = Math.floor(from.y + 0.5 + (to.y - from.y) * t);
+    if ((x === from.x && y === from.y) || (x === to.x && y === to.y)) continue;
+    if (blocks(m, y * cols + x)) return false;
+  }
+  return true;
+}
+
+/** Squares the party's tokens can see, within `radius` squares (or the whole map when radius is 0). */
+export function partyVision(m: MapScene): number[] {
+  const cols = columns(m);
+  const radius = m.explore?.radius ?? 0;
+  const out = new Set<number>();
+  for (const t of m.tokens.filter((x) => x.memberId)) {
+    for (let y = 0; y < rows(m); y++) {
+      for (let x = 0; x < cols; x++) {
+        if (radius && Math.max(Math.abs(x - t.x), Math.abs(y - t.y)) > radius) continue;
+        if (canSee(m, t, { x, y })) out.add(y * cols + x);
+      }
+    }
+  }
+  return [...out];
+}
+
+/** With exploration on, adds what the party can now see to the revealed squares. Nothing is hidden again. */
+export function explore(c: HostCampaign, mapId: string): HostCampaign {
+  const m = (c.maps ?? []).find((s) => s.id === mapId);
+  if (!m?.explore?.on) return c;
+  const seen = partyVision(m);
+  if (seen.every((i) => m.revealed.includes(i))) return c;
+  return withMap(c, mapId, (s) => ({ ...s, revealed: [...new Set([...s.revealed, ...seen])].sort((a, b) => a - b) }));
+}
+
+export function setExplore(c: HostCampaign, mapId: string, settings: { on: boolean; radius: number }): HostCampaign {
+  const next = withMap(c, mapId, (m) => ({ ...m, explore: { on: settings.on, radius: Math.max(0, Math.min(60, Math.round(settings.radius))) } }));
+  return explore(next, mapId);
+}
+
+/** Adds or removes wall squares. A wall replaces any door on the same square. */
+export function setWalls(c: HostCampaign, mapId: string, cells: { x: number; y: number }[], wall: boolean): HostCampaign {
+  return withMap(c, mapId, (m) => {
+    const cols = columns(m);
+    const idx = cells.filter(({ x, y }) => x >= 0 && y >= 0 && x < cols && y < rows(m)).map(({ x, y }) => y * cols + x);
+    const walls = new Set(m.walls ?? []);
+    for (const i of idx) wall ? walls.add(i) : walls.delete(i);
+    // Painting walls or erasing both clear any door on those squares.
+    const doors = (m.doors ?? []).filter((d) => !idx.includes(d.index));
+    return { ...m, walls: [...walls].sort((a, b) => a - b), doors };
+  });
+}
+
+/** Clicking a square with the door tool: adds a closed door, then opens and closes it. */
+export function cycleDoor(c: HostCampaign, mapId: string, x: number, y: number): HostCampaign {
+  const next = withMap(c, mapId, (m) => {
+    const i = y * columns(m) + x;
+    const doors = m.doors ?? [];
+    const door = doors.find((d) => d.index === i);
+    return {
+      ...m,
+      walls: (m.walls ?? []).filter((w) => w !== i),
+      doors: door ? doors.map((d) => (d.index === i ? { ...d, open: !d.open } : d)) : [...doors, { index: i, open: false }],
+    };
+  });
+  return explore(next, mapId);
 }

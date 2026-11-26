@@ -77,7 +77,7 @@ describe("campaign files with maps", () => {
     const c = setActiveMap(addMap(played(), scene), "docks");
     const file = JSON.parse(JSON.stringify(exportCampaign(c, { docks: { "0:0": "data:image/jpeg;base64,AAAA", "evil": "javascript:alert(1)" } })));
     const back = importCampaign(file, content, { room: "r", key: "k" });
-    expect(back.campaign.maps).toEqual([scene]);
+    expect(back.campaign.maps).toEqual([{ ...scene, walls: [], doors: [], explore: { on: false, radius: 0 } }]);
     expect(back.campaign.activeMapId).toBe("docks");
     expect(back.tiles).toEqual({ docks: { "0:0": "data:image/jpeg;base64,AAAA" } });
   });
