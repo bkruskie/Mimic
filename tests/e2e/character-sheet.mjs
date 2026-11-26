@@ -252,6 +252,156 @@ try {
   check((await page.locator('.pip[aria-pressed="true"]').count()) === 1, "spending a slot marks it used");
   await shot("sheet-spells-wizard");
 
+  // ----- Multiclassing: the Wizard takes a level of Fighter -----
+  await tap("button", "Notes");
+  await tap("button", "Level up");
+  await tap("button", "Add a class");
+  const newClass = page.getByRole("group", { name: "New class" });
+  check(await newClass.getByRole("button", { name: /^Barbarian/ }).isDisabled(), "Barbarian is unavailable without Strength 13");
+  check(/Needs Strength 13 or higher/.test(await newClass.getByRole("button", { name: /^Barbarian/ }).innerText()), "the reason is shown on the class");
+  await newClass.getByRole("button", { name: /^Fighter/ }).click();
+  await shot("level-up-multiclass");
+  await page.getByRole("button", { name: "Reach level 2" }).click();
+  await page.waitForTimeout(200);
+  check(/Wizard 1 \/ Fighter 1/.test(await page.locator(".sheet-top").innerText()), "header shows Wizard 1 / Fighter 1");
+  const mcTodo = await page.locator("main").innerText();
+  check(/Fighter: Fighting Style/.test(mcTodo) && /Fighter: Weapon Mastery/.test(mcTodo), "the Fighter's level 1 choices appear under To do");
+  await page.getByRole("button", { name: /^Defense/ }).click();
+  await tap("button", "Skills");
+  check(/Light armor, Medium armor, Shields/.test(await page.locator("main").innerText()), "the Fighter adds Light and Medium armor and Shields, not Heavy");
+  await tap("button", "Spells");
+  check((await page.locator(".pip").count()) === 2, "a single spellcasting class keeps its own slots");
+  await shot("sheet-multiclass");
+
+  // ----- High levels: Dwarf Warlock (Soldier) from 1 to 11 -----
+  await page.getByRole("button", { name: "Back to the vault" }).click();
+  await tap("button", "Build a character");
+  await page.getByRole("button", { name: /^Warlock/ }).click();
+  await page.getByRole("button", { name: /^Next: Species/ }).click();
+  await page.getByRole("button", { name: /^Dwarf/ }).click();
+  await page.getByRole("button", { name: /^Next: Background/ }).click();
+  await page.getByRole("button", { name: /^Soldier/ }).click();
+  await page.getByRole("group", { name: "Plus two" }).getByRole("button", { name: "Dexterity" }).click();
+  await page.getByRole("group", { name: "Plus one" }).getByRole("button", { name: "Constitution" }).click();
+  await page.getByRole("button", { name: /^Next: Abilities/ }).click();
+  await page.getByRole("button", { name: /^Next: Class options/ }).click();
+  const wlSkills = page.getByRole("group", { name: "Class skills" });
+  await wlSkills.getByRole("button", { name: "Arcana" }).click();
+  await wlSkills.getByRole("button", { name: "Deception" }).click();
+  check(await page.getByRole("button", { name: /^Thirsting Blade/ }).isDisabled(), "Thirsting Blade is unavailable at level 1");
+  await page.getByRole("button", { name: /^Armor of Shadows/ }).click();
+  await shot("builder-invocations");
+  await page.getByRole("button", { name: /^Next: Equipment/ }).click();
+  await page.getByRole("button", { name: /^Option A/ }).nth(0).click();
+  await page.getByRole("button", { name: /^Option A/ }).nth(1).click();
+  await page.getByRole("button", { name: /^Next: Spells/ }).click();
+  await page.getByRole("heading", { name: "Warlock cantrips" }).waitFor();
+  await pick("Warlock cantrips", 2);
+  await pick("Prepared Warlock spells", 2);
+  await page.getByRole("button", { name: /^Next: Name and finish/ }).click();
+  await page.getByLabel("Character name").fill("Brask Coalhand");
+  await page.getByText("Every choice is made.").waitFor();
+  check(true, "warlock builder accepts one invocation at level 1");
+  await tap("button", "Save to vault");
+  await page.getByRole("heading", { name: "Brask Coalhand" }).waitFor();
+  await tap("button", "Notes");
+  for (let next = 2; next <= 11; next++) {
+    await tap("button", "Level up");
+    await page.getByRole("button", { name: `Reach level ${next}` }).click();
+    await page.waitForTimeout(150);
+  }
+  check(/Warlock 11/.test(await page.locator(".sheet-top").innerText()), "the Warlock reaches level 11");
+  const todo = await page.locator("main").innerText();
+  check(/Choose 6 more Eldritch Invocations/.test(todo), "level 11 asks for 6 more invocations (7 in all)");
+  check(/Choose a level 6 spell for Mystic Arcanum/.test(todo), "level 11 asks for a level 6 Mystic Arcanum");
+  check(await page.getByRole("button", { name: /^Thirsting Blade/ }).isDisabled(), "Thirsting Blade waits for Pact of the Blade");
+  await page.getByRole("button", { name: /^Pact of the Blade/ }).click();
+  check(!(await page.getByRole("button", { name: /^Thirsting Blade/ }).isDisabled()), "Pact of the Blade unlocks Thirsting Blade");
+  await page.getByRole("button", { name: /^Thirsting Blade/ }).click();
+  await pick("Mystic Arcanum: level 6 spell", 1);
+  await page.waitForTimeout(200);
+  check(!/Mystic Arcanum/.test(await page.locator("main").innerText().then((t) => t.split("Features and traits")[0])), "choosing the arcanum clears it from To do");
+  // A homebrew subclass, created and chosen from To do.
+  await tap("button", "Create your own subclass");
+  const sub = page.getByRole("dialog");
+  await sub.getByLabel("Subclass name").fill("The Hollow Star");
+  await sub.getByLabel("Feature name").fill("Starlit Mantle");
+  await sub.getByLabel("What it does").fill("Dim light around you.");
+  await sub.getByRole("button", { name: "Add a feature" }).click();
+  await sub.getByLabel("Class level").nth(1).selectOption("6");
+  await sub.getByLabel("Feature name").nth(1).fill("Void Step");
+  await sub.getByText("It has limited uses").nth(1).click();
+  await sub.getByLabel("Uses", { exact: true }).fill("2");
+  await shot("subclass-form");
+  await sub.getByRole("button", { name: "Create subclass" }).click();
+  await page.waitForTimeout(200);
+  check(/Warlock 11 \(The Hollow Star\)/.test(await page.locator(".sheet-top").innerText()), "creating a subclass chooses it");
+  check(/Void Step/.test(await page.locator("main").innerText()), "the homebrew subclass's features are listed");
+  await shot("sheet-warlock-11");
+  await tap("button", "Actions");
+  check(/The Attack action makes 2 attacks \(Thirsting Blade/.test(await page.locator("main").innerText()), "Thirsting Blade gives two attacks");
+  check(/Free cast: /.test(await page.locator("main").innerText()), "the arcanum spell has a free cast per Long Rest");
+  await shot("sheet-warlock-actions");
+
+  // ----- Homebrew: a bonus, a feature with uses, and an attack -----
+  const acNow = async () => Number(await page.locator(".vital", { hasText: "AC" }).locator(".value").innerText());
+  const acBefore = await acNow();
+  await tap("button", "Notes");
+  await tap("button", "Add a bonus");
+  await page.getByRole("dialog").getByLabel("Comes from").fill("Ring of Protection");
+  await page.getByRole("dialog").getByLabel("Changes").selectOption("ac");
+  await page.getByRole("dialog").getByLabel("Amount").fill("1");
+  await tap("button", "Add bonus");
+  check((await acNow()) === acBefore + 1, `a +1 AC bonus raises AC from ${acBefore} to ${acBefore + 1}`);
+  await tap("button", "Add a feature");
+  await page.getByRole("dialog").getByLabel("Name").fill("Lucky Charm");
+  await page.getByRole("dialog").getByLabel("Group").selectOption("Magic item");
+  await page.getByRole("dialog").getByLabel("What it does").fill("Reroll one d20 you just rolled.");
+  await page.getByRole("dialog").getByText("It has limited uses").click();
+  await page.getByRole("dialog").getByLabel("Uses", { exact: true }).fill("2");
+  await tap("button", "Add feature");
+  await shot("sheet-homebrew-notes");
+  check(/Magic item, 2 uses per Long Rest/.test(await page.locator("main").innerText()), "the feature is listed with its uses");
+  await tap("button", "Actions");
+  await tap("button", "Add an attack");
+  await page.getByRole("dialog").getByLabel("Name").fill("Hexblade Dagger");
+  await page.getByRole("dialog").getByLabel("Uses this ability").selectOption("cha");
+  await page.getByRole("dialog").getByLabel("Extra bonus to hit").fill("1");
+  await page.getByRole("dialog").getByLabel("Damage dice").fill("two d4");
+  check(await page.getByRole("button", { name: "Add attack" }).isDisabled(), "an unreadable damage roll can't be saved");
+  await page.getByRole("dialog").getByLabel("Damage dice").fill("1d4");
+  await page.getByRole("dialog").getByLabel("Damage type").fill("piercing");
+  await tap("button", "Add attack");
+  const hbActions = await page.locator("main").innerText();
+  check(/Hexblade Dagger/.test(hbActions), "the homebrew attack is listed");
+  check(/Lucky Charm\s+2 of 2 left/.test(hbActions), "the feature's uses are tracked under Limited uses");
+  await shot("sheet-homebrew-actions");
+  await page.reload();
+  await page.getByRole("heading", { name: "Brask Coalhand" }).waitFor();
+  const acAfter = await acNow();
+  const tabText = await page.locator("main").innerText();
+  check(acAfter === acBefore + 1 && /Hexblade Dagger/.test(tabText), "homebrew added just before a reload survives it");
+
+  // ----- Tablet and desktop: every section side by side, no tab bar -----
+  for (const [width, height, cols] of [
+    [1024, 768, 2],
+    [1440, 900, 3],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await page.waitForTimeout(250);
+    check((await page.locator(".tabbar").count()) === 0, `${width} px wide: no tab bar`);
+    check((await page.locator(".sheet-col").count()) === cols, `${width} px wide: ${cols} columns`);
+    const all = await page.locator("main").innerText();
+    check(["Attacks", "Features and traits", "Homebrew", "Spell slots"].every((h) => all.includes(h)), `${width} px wide: actions, spells and notes all show at once`);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    check(overflow <= 0, `${width} px wide: nothing runs off the side of the screen`);
+    await shot(`sheet-${width}`);
+  }
+  await page.getByText(/choices are still open/).click();
+  await page.waitForTimeout(600);
+  check(await page.locator("#todo").evaluate((el) => el.getBoundingClientRect().top < window.innerHeight), "the To do banner scrolls to the open choices");
+  await page.setViewportSize({ width: 390, height: 844 });
+
   check(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(" | ")}` : ""}`);
   console.log(`\nAll checks passed. Screenshots in ${SHOTS}`);
 } catch (e) {

@@ -1,7 +1,8 @@
-import { derive, exportCharacter, findClass, levelUp, type Character } from "@mimicbox/ruleset-dnd5e";
+import { MULTICLASS_GAINS, classOptionRule, derive, exportCharacter, findClass, levelUp, multiclassBlocker, type Character } from "@mimicbox/ruleset-dnd5e";
 import { useState } from "react";
 import { go } from "../../App";
-import { PendingChoices } from "../../components/editors";
+import { ClassOptionsEditor, PendingChoices, SubclassEditor } from "../../components/editors";
+import { BonusForm, FeatureForm, SubclassForm, describeBonus } from "../../components/homebrew";
 import { Markdown } from "../../lib/markdown";
 import { content, useApp } from "../../lib/state";
 import { portraitFromFile } from "../../lib/edit";
@@ -18,7 +19,16 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
   const { vault, refresh, toast } = useApp();
   const [levelling, setLevelling] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editingOptions, setEditingOptions] = useState<number | null>(null);
+  const [featureForm, setFeatureForm] = useState<{ id: string | null } | null>(null);
+  const [bonusForm, setBonusForm] = useState<{ id: string | null } | null>(null);
+  const [subclassForm, setSubclassForm] = useState<string | null>(null);
+  const [changingSubclass, setChangingSubclass] = useState<number | null>(null);
+  const hb = character.homebrew ?? { features: [], attacks: [], bonuses: [] };
   const entry = character.build.classes[0]!;
+  const optionClasses = character.build.classes
+    .map((e, i) => ({ i, rule: classOptionRule(e.id, e.level, findClass(content, e.id).progression[e.level - 1]?.columns ?? {}) }))
+    .filter((x): x is { i: number; rule: NonNullable<typeof x.rule> } => Boolean(x.rule && x.rule.count > 0));
 
   function download() {
     const file = exportCharacter(character, content);
@@ -37,7 +47,7 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
   return (
     <>
       {sheet.pending.length > 0 && (
-        <section className="section panel">
+        <section className="section panel" id="todo" style={{ scrollMarginTop: 180 }}>
           <h2>To do</h2>
           <ul className="small" style={{ margin: "6px 0 0", paddingLeft: 18 }}>
             {sheet.pending.map((p, i) => (
@@ -61,11 +71,33 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
       <section className="section">
         <div className="spread">
           <h2>Level {sheet.level}</h2>
-          <button className="btn btn-primary" disabled={entry.level >= 20} onClick={() => setLevelling(true)}>
+          <button className="btn btn-primary" disabled={sheet.level >= 20} onClick={() => setLevelling(true)}>
             Level up
           </button>
         </div>
+        {character.build.classes.map((e, i) =>
+          e.level >= 3 && e.subclass ? (
+            <button key={`sub-${e.id}`} className="btn" style={{ marginTop: 10, marginRight: 8 }} onClick={() => setChangingSubclass(i)}>
+              Change {findClass(content, e.id).name} subclass
+            </button>
+          ) : null,
+        )}
+        {optionClasses.map((x) => (
+          <button key={x.i} className="btn" style={{ marginTop: 10, marginRight: 8 }} onClick={() => setEditingOptions(x.i)}>
+            Change {x.rule.label}
+          </button>
+        ))}
       </section>
+      {changingSubclass !== null && (
+        <Drawer title="Subclass" onClose={() => setChangingSubclass(null)}>
+          <SubclassEditor character={character} sheet={sheet} update={update} index={changingSubclass} />
+        </Drawer>
+      )}
+      {editingOptions !== null && (
+        <Drawer title={optionClasses.find((x) => x.i === editingOptions)?.rule.label ?? "Options"} onClose={() => setEditingOptions(null)}>
+          <ClassOptionsEditor character={character} sheet={sheet} update={update} index={editingOptions} />
+        </Drawer>
+      )}
 
       <section className="section">
         <h2>Features and traits</h2>
@@ -86,6 +118,76 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
           </div>
         ))}
       </section>
+
+      <section className="section">
+        <h2>Homebrew</h2>
+        <p className="muted small" style={{ margin: "4px 0 10px" }}>
+          Your own features, magic items and bonuses. Bonuses are added to the numbers they change, and each number still explains where it comes from.
+        </p>
+        {hb.features.length + hb.bonuses.length + (hb.subclasses?.length ?? 0) > 0 && (
+          <ul className="rows" aria-label="Your homebrew">
+            {hb.features.map((f) => (
+              <li key={f.id} className="resource spread">
+                <span>
+                  <strong>{f.name}</strong>
+                  <br />
+                  <span className="muted small">
+                    {f.kind}
+                    {f.uses ? `, ${f.uses.max} use${f.uses.max === 1 ? "" : "s"} per ${f.uses.reset === "long" ? "Long Rest" : "Short or Long Rest"}` : ""}
+                  </span>
+                </span>
+                <button className="btn btn-quiet" aria-label={`Edit ${f.name}`} onClick={() => setFeatureForm({ id: f.id })}>
+                  Edit
+                </button>
+              </li>
+            ))}
+            {(hb.subclasses ?? []).map((sc) => (
+              <li key={sc.id} className="resource spread">
+                <span>
+                  <strong>{sc.name}</strong>
+                  <br />
+                  <span className="muted small">
+                    {findClass(content, sc.classId).name} subclass, {sc.features.length} feature{sc.features.length === 1 ? "" : "s"}
+                  </span>
+                </span>
+                <button className="btn btn-quiet" aria-label={`Edit ${sc.name}`} onClick={() => setSubclassForm(sc.id)}>
+                  Edit
+                </button>
+              </li>
+            ))}
+            {hb.bonuses.map((b) => (
+              <li key={b.id} className="resource spread">
+                <span>
+                  <strong>{b.label}</strong>
+                  <br />
+                  <span className="muted small">{describeBonus(b, character)}</span>
+                </span>
+                <button className="btn btn-quiet" aria-label={`Edit ${b.label}`} onClick={() => setBonusForm({ id: b.id })}>
+                  Edit
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="row" style={{ marginTop: 10 }}>
+          <button className="btn" onClick={() => setFeatureForm({ id: null })}>
+            Add a feature
+          </button>
+          <button className="btn" onClick={() => setBonusForm({ id: null })}>
+            Add a bonus
+          </button>
+        </div>
+        <p className="muted small" style={{ marginTop: 8 }}>
+          Add your own attacks on the Actions tab.
+        </p>
+      </section>
+      {featureForm && <FeatureForm feature={hb.features.find((f) => f.id === featureForm.id) ?? null} update={update} onClose={() => setFeatureForm(null)} />}
+      {subclassForm &&
+        (() => {
+          const sc = hb.subclasses?.find((x) => x.id === subclassForm);
+          return sc ? <SubclassForm subclass={sc} classId={sc.classId} className={findClass(content, sc.classId).name} update={update} onClose={() => setSubclassForm(null)} /> : null;
+        })()}
+      {bonusForm && <BonusForm bonus={hb.bonuses.find((b) => b.id === bonusForm.id) ?? null} character={character} update={update} onClose={() => setBonusForm(null)} />}
 
       <section className="section stack">
         <h2>Notes</h2>
@@ -161,8 +263,8 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
         <LevelUpDrawer
           character={character}
           onClose={() => setLevelling(false)}
-          onConfirm={(roll) => {
-            const next = levelUp(character, content, { classId: entry.id, hitPointRoll: roll });
+          onConfirm={(chosen, roll) => {
+            const next = levelUp(character, content, { classId: chosen, hitPointRoll: roll });
             const open = derive(next, content).pending.length;
             update(next);
             setLevelling(false);
@@ -190,19 +292,55 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
   );
 }
 
-function LevelUpDrawer({ character, onClose, onConfirm }: { character: Character; onClose: () => void; onConfirm: (roll: number | null) => void }) {
-  const entry = character.build.classes[0]!;
-  const cls = findClass(content, entry.id);
-  const next = entry.level + 1;
+function LevelUpDrawer({ character, onClose, onConfirm }: { character: Character; onClose: () => void; onConfirm: (classId: string, roll: number | null) => void }) {
+  const total = character.build.classes.reduce((t, e) => t + e.level, 0);
+  const [classId, setClassId] = useState(character.build.classes[0]!.id);
+  const [adding, setAdding] = useState(false);
+  const entry = character.build.classes.find((e) => e.id === classId);
+  const cls = findClass(content, classId);
+  const next = (entry?.level ?? 0) + 1;
   const row = cls.progression[next - 1]!;
   const [mode, setMode] = useState<"average" | "roll">("average");
   const [rolled, setRolled] = useState("");
   const rollValue = Math.floor(Number(rolled));
   const valid = mode === "average" || (rollValue >= 1 && rollValue <= cls.hitDie);
+  const others = content.classes.filter((c) => !character.build.classes.some((e) => e.id === c.id));
   return (
-    <Drawer title={`${cls.name} level ${next}`} onClose={onClose}>
-      <p>
-        New at level {next}: {row.features.length ? row.features.join(", ") : "no new class features"}.
+    <Drawer title={`Level ${total + 1}`} onClose={onClose}>
+      <h3>Class</h3>
+      <div className="row" role="group" aria-label="Class to level" style={{ marginTop: 8 }}>
+        {character.build.classes.map((e) => (
+          <button
+            key={e.id}
+            className="chip"
+            aria-pressed={classId === e.id}
+            onClick={() => {
+              setClassId(e.id);
+              setAdding(false);
+            }}
+          >
+            {findClass(content, e.id).name} {e.level + 1}
+          </button>
+        ))}
+        <button className="chip" aria-pressed={adding} onClick={() => setAdding(true)}>
+          Add a class
+        </button>
+      </div>
+      {adding && (
+        <div className="choice-grid" style={{ marginTop: 10 }} role="group" aria-label="New class">
+          {others.map((c) => {
+            const blocker = multiclassBlocker(character, content, c.id);
+            return (
+              <button key={c.id} type="button" className="choice" aria-pressed={classId === c.id} disabled={Boolean(blocker)} onClick={() => setClassId(c.id)}>
+                <strong>{c.name}</strong>
+                <small>{blocker ?? `d${c.hitDie} Hit Point Die. ${multiclassGainsText(c.id)}`}</small>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <p style={{ marginTop: 12 }}>
+        {cls.name} level {next}: {row.features.length ? row.features.join(", ") : "no new class features"}.
       </p>
       <h3>Hit points</h3>
       <div className="row" style={{ marginTop: 8 }}>
@@ -222,10 +360,24 @@ function LevelUpDrawer({ character, onClose, onConfirm }: { character: Character
       <p className="muted small" style={{ marginTop: 10 }}>
         Your Constitution modifier is added automatically. New choices, such as a subclass or an Ability Score Improvement, appear under To do.
       </p>
-      <p className="muted small">Multiclassing arrives in a later release.</p>
-      <button className="btn btn-primary" disabled={!valid} onClick={() => onConfirm(mode === "roll" ? rollValue : null)}>
-        Reach level {next}
+      <button className="btn btn-primary" disabled={!valid || (adding && !others.some((c) => c.id === classId))} onClick={() => onConfirm(classId, mode === "roll" ? rollValue : null)}>
+        Reach level {total + 1}
       </button>
     </Drawer>
   );
+}
+
+/** What a class gives as a second class, in a few words. */
+function multiclassGainsText(classId: string): string {
+  const g = MULTICLASS_GAINS[classId];
+  if (!g) return "";
+  const armor = [g.armor.light && "Light", g.armor.medium && "Medium"].filter(Boolean).join(" and ");
+  const parts = [
+    armor && `${armor} armor`,
+    g.armor.shield && "Shields",
+    g.martial && "Martial weapons",
+    g.skills.count && `${g.skills.count} skill`,
+    g.tool,
+  ].filter(Boolean);
+  return parts.length ? `Gain ${parts.join(", ")}.` : "No new proficiencies.";
 }

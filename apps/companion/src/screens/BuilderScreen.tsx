@@ -23,6 +23,7 @@ import { go } from "../App";
 import {
   BackgroundAbilityEditor,
   ClassChoicesEditor,
+  ClassOptionsEditor,
   ClassSkillsEditor,
   ExpertiseEditor,
   FightingStyleEditor,
@@ -177,6 +178,7 @@ export function BuilderScreen() {
           <ClassChoicesEditor character={draft} sheet={sheet} update={update} />
           {FIGHTING_STYLE_LEVEL[draft.build.classes[0]!.id] === 1 && <FightingStyleEditor character={draft} sheet={sheet} update={update} />}
           <WeaponMasteryEditor character={draft} sheet={sheet} update={update} />
+          <ClassOptionsEditor character={draft} sheet={sheet} update={update} />
         </>
       )}
       {step === "equipment" && <EquipmentStep character={draft} value={equipment} onChange={setEquipment} />}

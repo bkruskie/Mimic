@@ -1,6 +1,8 @@
 import {
   ABILITY_NAMES,
+  classSpellLists,
   findClass,
+  setClassSpells,
   loadSpells,
   type Ability,
   type Character,
@@ -121,35 +123,43 @@ export function SpellChooser({
   );
 }
 
-/** Cantrips and prepared spells for the character's spellcasting class. */
-export function ClassSpellsEditor({ character, sheet, update }: { character: Character; sheet: DerivedSheet; update: Update }) {
-  const sc = sheet.spellcasting;
+/** Cantrips and prepared spells for one spellcasting class (the first one unless `classId` says otherwise). */
+export function ClassSpellsEditor({ character, sheet, update, classId }: { character: Character; sheet: DerivedSheet; update: Update; classId?: string }) {
+  const sc = classId ? sheet.spellcastingClasses.find((x) => x.classId === classId) : sheet.spellcasting;
   if (!sc) return null;
   const cls = findClass(content, sc.classId);
+  const own = classSpellLists(character, sc.classId);
+  // Spells chosen for another class are shown as Known, so the same spell isn't prepared twice.
+  const otherClasses = sheet.spellcastingClasses.filter((x) => x.classId !== sc.classId).map((x) => classSpellLists(character, x.classId));
   const granted = sheet.grantedSpells.map((g) => g.id);
   const levelled = Object.entries(sc.list)
     .filter(([l]) => Number(l) > 0)
     .flatMap(([, ids]) => ids);
+  const set = (next: Partial<typeof own>) => update((c) => setClassSpells(c, sc.classId, { ...classSpellLists(c, sc.classId), ...next }));
   return (
     <>
       {sc.cantripLimit > 0 && (
         <SpellChooser
           title={`${cls.name} cantrips`}
           ids={sc.list[0] ?? []}
-          selected={character.spells.cantrips}
+          selected={own.cantrips}
           max={sc.cantripLimit}
           locked={granted.filter((g) => (sc.list[0] ?? []).includes(g))}
-          onToggle={(id) => update((c) => ({ ...c, spells: { ...c.spells, cantrips: toggle(c.spells.cantrips, id, sc.cantripLimit) } }))}
+          known={otherClasses.flatMap((o) => o.cantrips)}
+          onToggle={(id) => set({ cantrips: toggle(own.cantrips, id, sc.cantripLimit) })}
         />
       )}
-      <SpellChooser
-        title={`Prepared ${cls.name} spells`}
-        ids={levelled}
-        selected={character.spells.prepared}
-        max={sc.preparedLimit}
-        locked={granted.filter((g) => levelled.includes(g))}
-        onToggle={(id) => update((c) => ({ ...c, spells: { ...c.spells, prepared: toggle(c.spells.prepared, id, sc.preparedLimit) } }))}
-      />
+      {sc.preparedLimit > 0 && (
+        <SpellChooser
+          title={`Prepared ${cls.name} spells`}
+          ids={levelled}
+          selected={own.prepared}
+          max={sc.preparedLimit}
+          locked={granted.filter((g) => levelled.includes(g))}
+          known={otherClasses.flatMap((o) => o.prepared)}
+          onToggle={(id) => set({ prepared: toggle(own.prepared, id, sc.preparedLimit) })}
+        />
+      )}
     </>
   );
 }

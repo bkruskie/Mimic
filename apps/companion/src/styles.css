@@ -865,6 +865,14 @@ details.feature[open] {
   border-color: var(--brass);
   box-shadow: inset 0 0 0 1px var(--brass);
 }
+.choice:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.choice:disabled small.prereq,
+.choice:disabled small {
+  color: var(--bone-dim);
+}
 .choice strong {
   display: block;
   font-family: var(--font-display);
@@ -872,7 +880,12 @@ details.feature[open] {
   font-weight: 600;
 }
 .choice small {
+  display: block;
   color: var(--bone-dim);
+}
+.choice small.prereq {
+  color: var(--brass);
+  margin-bottom: 4px;
 }
 .builder-footer {
   position: fixed;
@@ -939,4 +952,44 @@ details.feature[open] {
 
 .score-table .stepper output {
   color: var(--bone);
+}
+
+/* ---------- tablet and desktop: every section side by side ---------- */
+.sheet-grid {
+  display: grid;
+  gap: 0 32px;
+  align-items: start;
+}
+.sheet-col {
+  min-width: 0;
+}
+.sheet-grid .ability-grid {
+  grid-template-columns: repeat(3, 1fr);
+}
+@media (min-width: 900px) {
+  .screen.wide,
+  .sheet-top-inner.wide {
+    max-width: 1480px;
+  }
+  .screen.wide {
+    padding-bottom: 120px;
+  }
+  .sheet-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .screen.wide ~ .die-fab {
+    bottom: calc(24px + var(--safe-bottom));
+    right: 24px;
+  }
+}
+@media (min-width: 1280px) {
+  .sheet-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (min-width: 900px) {
+  .sheet-top-inner.wide .vitals {
+    grid-template-columns: minmax(0, 460px) auto auto auto;
+    justify-content: start;
+  }
 }

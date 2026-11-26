@@ -3,11 +3,11 @@
  * so the app can keep an undo history and the vault can save whole documents.
  */
 import { findBackground, findClass, resolveItem } from "./content.js";
-import { derive, type DerivedSheet } from "./derive.js";
-import { STANDARD_ARRAY } from "./mechanics.js";
-import { ABILITIES, type Ability, type AbilityScores, type Character, type ClassEntry, type Content, type InventoryItem } from "./types.js";
+import { classSpellLists, derive, type DerivedSheet } from "./derive.js";
+import { MULTICLASS_MINIMUM, SPELLCASTING_ABILITY, STANDARD_ARRAY, primaryAbilities } from "./mechanics.js";
+import { ABILITIES, SKILL_IDS, type Ability, type AbilityScores, type Character, type ClassEntry, type Content, type Homebrew, type InventoryItem } from "./types.js";
 
-export const CURRENT_SCHEMA_VERSION = 1 as const;
+export const CURRENT_SCHEMA_VERSION = 2 as const;
 
 export const newId = (): string =>
   globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -128,23 +128,55 @@ export interface LevelUpInput {
   hitPointRoll?: number | null;
 }
 
-/** Adds one level to a class the character already has, and raises current HP by the same amount as the maximum. */
+/**
+ * Why the character can't take a first level in a class, or null if they can. Multiclassing needs 13 in the primary
+ * ability of the new class and of every class they already have.
+ */
+export function multiclassBlocker(c: Character, content: Content, classId: string): string | null {
+  if (c.build.classes.some((e) => e.id === classId)) return null;
+  const sheet = derive(c, content);
+  if (sheet.level >= 20) return "Level 20 is the highest level.";
+  for (const id of [...c.build.classes.map((e) => e.id), classId]) {
+    const cls = findClass(content, id);
+    const req = primaryAbilities(cls.primaryAbility);
+    const ok = req.all ? req.abilities.every((a) => sheet.abilities[a].score.value >= MULTICLASS_MINIMUM) : req.abilities.some((a) => sheet.abilities[a].score.value >= MULTICLASS_MINIMUM);
+    if (!ok) {
+      const names = req.abilities.map((a) => ({ str: "Strength", dex: "Dexterity", con: "Constitution", int: "Intelligence", wis: "Wisdom", cha: "Charisma" })[a]);
+      return `Needs ${names.join(req.all ? " and " : " or ")} ${MULTICLASS_MINIMUM} or higher${id === classId ? "" : ` (for your ${cls.name} levels)`}.`;
+    }
+  }
+  return null;
+}
+
+/** Adds one level to a class, or a first level in a new class (multiclassing), and raises current HP by the same amount as the maximum. */
 export function levelUp(c: Character, content: Content, input: LevelUpInput): Character {
   const before = derive(c, content);
-  const classes = c.build.classes.map((e) => {
-    if (e.id !== input.classId) return e;
-    if (e.level >= 20) throw new Error("Level 20 is the highest level.");
-    const cls = findClass(content, e.id);
-    const roll = input.hitPointRoll ?? null;
-    if (roll !== null && (roll < 1 || roll > cls.hitDie)) throw new Error(`A d${cls.hitDie} roll must be between 1 and ${cls.hitDie}.`);
-    return { ...e, level: e.level + 1, hitPointRolls: [...e.hitPointRolls, roll] };
-  });
-  if (!c.build.classes.some((e) => e.id === input.classId)) throw new Error("Multiclassing arrives in a later release.");
+  if (before.level >= 20) throw new Error("Level 20 is the highest level.");
+  const cls = findClass(content, input.classId);
+  const roll = input.hitPointRoll ?? null;
+  if (roll !== null && (roll < 1 || roll > cls.hitDie)) throw new Error(`A d${cls.hitDie} roll must be between 1 and ${cls.hitDie}.`);
+  let classes: ClassEntry[];
+  if (c.build.classes.some((e) => e.id === input.classId)) {
+    classes = c.build.classes.map((e) => (e.id === input.classId ? { ...e, level: e.level + 1, hitPointRolls: [...e.hitPointRolls, roll] } : e));
+  } else {
+    const blocker = multiclassBlocker(c, content, input.classId);
+    if (blocker) throw new Error(`You can't take a level in ${cls.name} yet. ${blocker}`);
+    classes = [...c.build.classes, { ...emptyClassEntry(input.classId), hitPointRolls: [roll] }];
+  }
   const next: Character = { ...c, build: { ...c.build, classes } };
   const after = derive(next, content);
   const gained = after.hp.max.value - before.hp.max.value;
   return touch({ ...next, state: { ...next.state, hp: Math.max(0, c.state.hp + gained) } });
 }
+
+/** Replaces one spellcasting class's cantrips and prepared spells. */
+export function setClassSpells(c: Character, classId: string, next: { cantrips: string[]; prepared: string[] }): Character {
+  const first = c.build.classes.find((e) => SPELLCASTING_ABILITY[e.id]);
+  if (!first || first.id === classId) return touch({ ...c, spells: { ...c.spells, cantrips: next.cantrips, prepared: next.prepared } });
+  return touch({ ...c, spells: { ...c.spells, byClass: { ...(c.spells.byClass ?? {}), [classId]: next } } });
+}
+
+export { classSpellLists };
 
 // ---------- play state ----------
 
@@ -213,11 +245,26 @@ export function setExhaustion(c: Character, level: number): Character {
  * Short Rest: spend Hit Point Dice (each `rolls` entry is one die's face; the Constitution modifier is added per die),
  * regain Pact Magic slots, and recover short-rest resources.
  */
-export function shortRest(c: Character, content: Content, rolls: number[] = []): Character {
+/**
+ * Short Rest. Each roll is a Hit Point Die result; give `{ die, roll }` when the character has more than one size of
+ * Hit Point Die, otherwise a plain number uses the first size that has dice left.
+ */
+export function shortRest(c: Character, content: Content, rolls: (number | { die: number; roll: number })[] = []): Character {
   const sheet = derive(c, content);
   const conMod = sheet.abilities.con.mod;
-  const usable = Math.min(rolls.length, sheet.hitDiceAvailable);
-  const healed = rolls.slice(0, usable).reduce((t, r) => t + Math.max(0, r + conMod), 0);
+  const left: Record<number, number> = Object.fromEntries(sheet.hitDiceByDie.map((g) => [g.die, g.available]));
+  const spentByDie: Record<string, number> = Object.fromEntries(sheet.hitDiceByDie.map((g) => [String(g.die), g.total - g.available]));
+  let healed = 0;
+  let usable = 0;
+  for (const r of rolls) {
+    const die = typeof r === "number" ? sheet.hitDiceByDie.find((g) => (left[g.die] ?? 0) > 0)?.die : r.die;
+    const value = typeof r === "number" ? r : r.roll;
+    if (die === undefined || (left[die] ?? 0) <= 0) continue;
+    left[die] = (left[die] ?? 0) - 1;
+    spentByDie[String(die)] = (spentByDie[String(die)] ?? 0) + 1;
+    usable += 1;
+    healed += Math.max(0, value + conMod);
+  }
   const resourcesSpent = { ...c.state.resourcesSpent };
   for (const r of sheet.resources) {
     if (r.reset === "short") resourcesSpent[r.id] = 0;
@@ -229,6 +276,7 @@ export function shortRest(c: Character, content: Content, rolls: number[] = []):
       ...c.state,
       hp: Math.min(sheet.hp.max.value, c.state.hp + healed),
       hitDiceSpent: c.state.hitDiceSpent + usable,
+      hitDiceSpentByDie: spentByDie,
       pactSlotsSpent: 0,
       resourcesSpent,
     },
@@ -247,6 +295,7 @@ export function longRest(c: Character, content: Content): Character {
       tempHp: 0,
       deathSaves: { successes: 0, failures: 0 },
       hitDiceSpent: 0,
+      hitDiceSpentByDie: {},
       slotsSpent: [],
       pactSlotsSpent: 0,
       resourcesSpent: {},
@@ -286,12 +335,73 @@ export function importCharacter(raw: unknown, content: Content, options: { newId
     const score = (c.build.baseAbilities as Record<Ability, unknown>)?.[a];
     if (typeof score !== "number" || score < 1 || score > 30) throw new CharacterImportError(`The ${a.toUpperCase()} score in the file isn't valid.`);
   }
+  validateHomebrew(c.homebrew);
   try {
     derive(c, content);
   } catch (e) {
     throw new CharacterImportError(`The character refers to content this app doesn't have: ${(e as Error).message}`);
   }
-  return options.newId ? { ...c, id: newId(), updatedAt: now() } : c;
+  const upgraded: Character = { ...c, schemaVersion: CURRENT_SCHEMA_VERSION };
+  return options.newId ? { ...upgraded, id: newId(), updatedAt: now() } : upgraded;
+}
+
+const BONUS_TARGETS = new Set<string>([
+  "ac",
+  "saves",
+  "initiative",
+  "speed",
+  "hpMax",
+  "attack",
+  "spellDc",
+  "spellAttack",
+  ...ABILITIES.flatMap((a) => [`save:${a}`, `ability:${a}`]),
+  ...SKILL_IDS.map((s) => `skill:${s}`),
+]);
+
+function validateHomebrew(h: unknown): void {
+  if (h === undefined) return;
+  const bad = (what: string) => new CharacterImportError(`The character's homebrew ${what} isn't valid, so the file wasn't imported. Remove it from the file or export it again from Mimic Box.`);
+  if (!isRecord(h) || !Array.isArray(h.features) || !Array.isArray(h.attacks) || !Array.isArray(h.bonuses)) throw bad("section");
+  for (const f of h.features) if (!isRecord(f) || typeof f.name !== "string" || typeof f.text !== "string") throw bad("feature list");
+  for (const a of h.attacks) if (!isRecord(a) || typeof a.name !== "string" || typeof a.damage !== "string") throw bad("attack list");
+  for (const b of h.bonuses) if (!isRecord(b) || typeof b.value !== "number" || !BONUS_TARGETS.has(String(b.target))) throw bad("bonus list");
+  if (h.subclasses !== undefined) {
+    if (!Array.isArray(h.subclasses)) throw bad("subclass list");
+    for (const sc of h.subclasses) {
+      if (!isRecord(sc) || typeof sc.name !== "string" || typeof sc.classId !== "string" || !Array.isArray(sc.features)) throw bad("subclass list");
+      for (const f of sc.features) if (!isRecord(f) || typeof f.level !== "number" || typeof f.name !== "string") throw bad("subclass list");
+    }
+  }
+}
+
+// ---------- homebrew ----------
+
+type HomebrewList<K extends keyof Homebrew> = NonNullable<Homebrew[K]>;
+
+/** Adds or replaces one homebrew entry (matched by id). */
+export function saveHomebrew<K extends keyof Homebrew>(c: Character, kind: K, entry: HomebrewList<K>[number]): Character {
+  const hb: Homebrew = c.homebrew ?? { features: [], attacks: [], bonuses: [] };
+  const list = (hb[kind] ?? []) as HomebrewList<K>[number][];
+  const next = list.some((e) => e.id === entry.id) ? list.map((e) => (e.id === entry.id ? entry : e)) : [...list, entry];
+  return touch({ ...c, homebrew: { ...hb, [kind]: next } });
+}
+
+/** Removes one homebrew entry and any uses spent on it. Removing a subclass also unpicks it. */
+export function removeHomebrew(c: Character, kind: keyof Homebrew, id: string): Character {
+  const hb: Homebrew = c.homebrew ?? { features: [], attacks: [], bonuses: [] };
+  const resourcesSpent = { ...c.state.resourcesSpent };
+  delete resourcesSpent[`custom:${id}`];
+  let classes = c.build.classes;
+  if (kind === "subclasses") {
+    for (const f of hb.subclasses?.find((x) => x.id === id)?.features ?? []) delete resourcesSpent[`custom:${f.id}`];
+    classes = classes.map((e) => (e.subclass === id ? { ...e, subclass: null } : e));
+  }
+  return touch({
+    ...c,
+    build: { ...c.build, classes },
+    homebrew: { ...hb, [kind]: ((hb[kind] ?? []) as { id: string }[]).filter((e) => e.id !== id) },
+    state: { ...c.state, resourcesSpent },
+  });
 }
 
 export interface CharacterFile {
