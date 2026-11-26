@@ -33,7 +33,7 @@ Starting here makes sense for the architecture too. The sheet needs the rules en
 
 | Area | First release | Later |
 | --- | --- | --- |
-| Rules | D&D 5e (2024) with SRD 5.2.1 content | Pathfinder 2e (Phase 2), Neon Odyssey once licensed |
+| Rules | D&D 5e (2024) with SRD 5.2.1 content | Pathfinder 2e (Phase 2), Neon Odyssey after its release |
 | Building | Guided builder: class, species, background, ability scores (standard array, point buy or rolled), choices, starting equipment | Templates, random character, import from other tools |
 | Sheet | Abilities, saves, skills, AC, initiative, speed, passive scores, proficiencies, features and traits, all computed | Custom sheet layouts per ruleset |
 | Rolling | Tap any number to roll it; advantage and disadvantage; roll history; manual entry for physical dice | Shared rolls in a DM's game |
@@ -512,17 +512,21 @@ Gate: a player builds a level 1 character on a phone in airplane mode, plays a r
 - **Phase 7, presentation and atmosphere**: display profiles, several displays at once, lighting and line of sight, scene art, ambient audio. Gate: a hybrid session with a table display and remote players feels finished.
 - **Phase 8, ecosystem**: content-pack sharing, sandboxed WebAssembly plugins, headless host image, map and dungeon generators, Discord links. Gate: a third party ships a pack or plugin without a Mimic Box release.
 
-Neon Odyssey is built as a 5e extension as soon as its rules are released and licensed, at the earliest after Phase 2.
+Neon Odyssey waits until its rules are published (estimated Q4 2027). The licence question is settled then, and it is built as a 5e extension; until that point the only work is keeping the `extends` hook in the 5e ruleset.
 
 ## Open decisions and assumptions
 
-Three decisions need the owner. Everything else below is a reversible assumption Phase 0 proceeds on.
+Two decisions still need the owner. Everything else below is a reversible assumption Phase 0 proceeds on.
+
+### Decided
+
+- [x] **Neon Odyssey: wait for release** (Nov 26, 2026). No ruleset work and no licence outreach until its rules are published. Its text is never shipped without permission.
+- [x] **A DM hosts for $0** (Nov 26, 2026). Hosting needs no account, card, domain, server or subscription from the DM. The host runs on the DM's own computer; the connection broker, STUN and relay are shared free services run by the project; when the free relay allowance runs out, Mimic Box stops offering the relay rather than charging anyone. A DM can also host on the local network with no internet service at all, or run their own broker for free.
 
 ### Needs your decision
 
-- [ ] **Neon Odyssey content.** Its rules are proprietary. Options: ask Avantris Entertainment for a licence or partnership (recommended; the Kickstarter drew about 49,000 backers, a large 5e audience), or ship only the mechanics engine and let groups enter their own content. Shipping their text without permission is ruled out.
 - [ ] **Code signing.** Signing certificates cost money every year, so a zero-cost Mimic Box ships unsigned, which shows "unknown developer" warnings on Windows and macOS. Plan: clear install steps, and applications to free signing programmes for open-source projects. Confirm you accept this.
-- [ ] **Who runs the connection broker.** It should be a free Cloudflare account you control, with no payment method attached, on the free `pages.dev` and `workers.dev` addresses so there is no domain to pay for.
+- [ ] **Who runs the shared connection broker.** DMs never run it. It should be one free Cloudflare account you control, with no payment method attached, on the free `pages.dev` and `workers.dev` addresses so there is no domain to pay for.
 
 ### Assumptions in force
 
