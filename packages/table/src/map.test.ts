@@ -160,9 +160,45 @@ describe("measuring, walls and exploration", async () => {
     expect(Math.max(...partyVision(c.maps![0]!).map((i) => i % 11))).toBe(2);
   });
 
-  it("never sends walls or doors to players", () => {
-    const wire = JSON.stringify(publicMap(revealAll(walled(), "docks", true).maps![0]!, "alice"));
+  it("never sends walls, and sends doors only on revealed squares", () => {
+    const all = revealAll(walled(), "docks", true);
+    const wire = JSON.stringify(publicMap(all.maps![0]!, "alice"));
     expect(wire).not.toContain("walls");
-    expect(wire).not.toContain("doors");
+    expect(publicMap(all.maps![0]!, "alice").doors).toEqual([{ x: 4, y: 2, open: false }]);
+    const doorHidden = setRevealed(all, "docks", [{ x: 4, y: 2 }], false);
+    expect(publicMap(doorHidden.maps![0]!, "alice").doors).toEqual([]);
+  });
+});
+
+describe("turns and doors on the map", async () => {
+  const { addCombatant, cycleDoor, nextTurn, startCombat, togglePlayerDoor } = await import("./index.js");
+  it("highlights the acting token only when the audience can see it", () => {
+    let c = revealAll(campaign(), "docks", true);
+    c = startCombat(c, () => "cw");
+    c = { ...c, combat: { ...c.combat!, combatants: [] } };
+    c = addCombatant(c, { id: "spy-turn", name: "Spy", initiative: 20, hidden: true, hp: null, tokenId: "spy" });
+    c = addCombatant(c, { id: "ogre-turn", name: "Ogre", initiative: 10, hidden: false, hp: null, tokenId: "ogre" });
+    c = nextTurn(c); // the hidden spy acts
+    expect(displayView(c, new Set(), content).map?.activeTokenId).toBeNull();
+    c = nextTurn(c); // the ogre acts
+    expect(displayView(c, new Set(), content).map?.activeTokenId).toBe("ogre");
+    expect(playerView(c, new Set(["alice"]), content, "alice").find((x) => x.t === "map")).toMatchObject({ map: { activeTokenId: "ogre" } });
+  });
+
+  it("shows doors on revealed squares and lets a player work one next to their token", () => {
+    let c = cycleDoor(campaign(), "docks", 1, 1); // a closed door diagonal to Wren at 0,0
+    c = cycleDoor(c, "docks", 5, 5); // another, far away
+    expect(publicMap(c.maps![0]!, "alice").doors).toEqual([]); // nothing revealed yet
+    c = revealAll(c, "docks", true);
+    expect(publicMap(c.maps![0]!, "alice").doors).toEqual([
+      { x: 1, y: 1, open: false },
+      { x: 5, y: 5, open: false },
+    ]);
+    expect(togglePlayerDoor(c, "alice", 5, 5)).toBeNull(); // too far
+    expect(togglePlayerDoor(c, "alice", 2, 2)).toBeNull(); // no door there
+    expect(togglePlayerDoor(c, "mallory", 1, 1)).toBeNull(); // no token
+    const opened = handlePlayerMessage(c, "alice", { t: "door", v, commandId: "d1", x: 1, y: 1 }, content, () => "x");
+    expect(opened.changed).toBe(true);
+    expect(publicMap(opened.campaign.maps![0]!, "alice").doors[0]).toEqual({ x: 1, y: 1, open: true });
   });
 });

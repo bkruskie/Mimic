@@ -62,7 +62,8 @@ export type PlayerMessage =
   | { t: "character"; v: number; commandId: string; character: unknown }
   | { t: "roll"; v: number; commandId: string; roll: Pick<SharedRoll, "characterName" | "label" | "expression" | "total" | "breakdown" | "flag"> }
   | { t: "initiative"; v: number; commandId: string; total: number }
-  | { t: "move"; v: number; commandId: string; tokenId: string; x: number; y: number };
+  | { t: "move"; v: number; commandId: string; tokenId: string; x: number; y: number }
+  | { t: "door"; v: number; commandId: string; x: number; y: number };
 
 export type HostMessage =
   | { t: "welcome"; v: number; campaign: string; memberId: string }
@@ -126,6 +127,8 @@ export function parsePlayerMessage(raw: unknown): PlayerMessage | null {
       return id(raw.commandId) && id(raw.tokenId) && Number.isInteger(raw.x) && Number.isInteger(raw.y)
         ? { t: "move", v: raw.v, commandId: raw.commandId, tokenId: raw.tokenId, x: raw.x as number, y: raw.y as number }
         : null;
+    case "door":
+      return id(raw.commandId) && Number.isInteger(raw.x) && Number.isInteger(raw.y) ? { t: "door", v: raw.v, commandId: raw.commandId, x: raw.x as number, y: raw.y as number } : null;
     case "initiative":
       return id(raw.commandId) && typeof raw.total === "number" && Number.isInteger(raw.total) && Math.abs(raw.total) <= 100
         ? { t: "initiative", v: raw.v, commandId: raw.commandId, total: raw.total }

@@ -51,6 +51,8 @@ interface TableState {
   map: PublicMap | null;
   mapTiles: { tx: number; ty: number; url: string }[];
   moveToken: (tokenId: string, x: number, y: number) => void;
+  /** Opens or closes a door next to this player's token. */
+  toggleDoor: (x: number, y: number) => void;
   join: (seat: Seat) => Promise<void>;
   leave: () => Promise<void>;
   shareCharacter: (c: Character) => void;
@@ -270,9 +272,11 @@ export function TableProvider({ children }: { children: ReactNode }) {
     [enqueue],
   );
 
+  const toggleDoor = useCallback((x: number, y: number) => enqueue({ t: "door", v: PROTOCOL_VERSION, commandId: newId(), x, y }), [enqueue]);
+
   const value = useMemo<TableState>(
-    () => ({ seat, invite, status, problem, party, rolls, handouts, combat, memberId, map, mapTiles, moveToken, join, leave, shareCharacter, shareRoll, setEffectHandler }),
-    [seat, invite, status, problem, party, rolls, handouts, combat, memberId, map, mapTiles, moveToken, join, leave, shareCharacter, shareRoll, setEffectHandler],
+    () => ({ seat, invite, status, problem, party, rolls, handouts, combat, memberId, map, mapTiles, moveToken, toggleDoor, join, leave, shareCharacter, shareRoll, setEffectHandler }),
+    [seat, invite, status, problem, party, rolls, handouts, combat, memberId, map, mapTiles, moveToken, toggleDoor, join, leave, shareCharacter, shareRoll, setEffectHandler],
   );
   return <TableContext.Provider value={value}>{children}</TableContext.Provider>;
 }

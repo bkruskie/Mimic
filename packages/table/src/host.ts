@@ -3,8 +3,8 @@
  * keep secrets and stop repeated actions can be tested without a network. The app wires them to a live link.
  */
 import { CharacterImportError, derive, importCharacter, type Character, type Content } from "@mimicbox/ruleset-dnd5e";
-import { publicCombat, setMemberInitiative, type Combat } from "./combat.js";
-import { activeMap, movePlayerToken, publicMap, type MapScene } from "./map.js";
+import { actingTokenId, publicCombat, setMemberInitiative, type Combat } from "./combat.js";
+import { activeMap, movePlayerToken, publicMap, togglePlayerDoor, type MapScene } from "./map.js";
 import {
   PROTOCOL_VERSION,
   parsePlayerMessage,
@@ -135,6 +135,11 @@ export function handlePlayerMessage(campaign: HostCampaign, from: string, raw: u
     return { campaign: touch(remember(next ?? campaign, from, m.commandId)), replies: [acked], changed: true };
   }
 
+  if (m.t === "door") {
+    const next = togglePlayerDoor(campaign, from, m.x, m.y);
+    return { campaign: touch(remember(next ?? campaign, from, m.commandId)), replies: [{ to: from, msg: msg({ t: "ack", commandId: m.commandId }) }], changed: Boolean(next) };
+  }
+
   if (m.t === "initiative") {
     const next = setMemberInitiative(campaign, from, m.total);
     const acked = { to: from, msg: msg({ t: "ack", commandId: m.commandId }) };
@@ -226,7 +231,7 @@ export function playerView(campaign: HostCampaign, connected: ReadonlySet<string
     msg({ t: "rolls", rolls: campaign.rolls.filter((r) => r.visibility === "public").slice(-30) }),
     msg({ t: "handouts", handouts: revealedHandouts(campaign) }),
     msg({ t: "combat", combat: publicCombat(campaign) }),
-    msg({ t: "map", map: map ? publicMap(map, viewer) : null }),
+    msg({ t: "map", map: map ? publicMap(map, viewer, actingTokenId(campaign)) : null }),
   ];
 }
 
@@ -242,7 +247,7 @@ export function displayView(campaign: HostCampaign, connected: ReadonlySet<strin
     combat: publicCombat(campaign),
     map: (() => {
       const m = activeMap(campaign);
-      return m ? publicMap(m, null) : null;
+      return m ? publicMap(m, null, actingTokenId(campaign)) : null;
     })(),
   };
 }

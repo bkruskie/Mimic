@@ -8,6 +8,7 @@ import {
   HANDOUT_MAX_LENGTH,
   addCombatant,
   addDmRoll,
+  columns,
   endCombat,
   initiativeOrder,
   nextTurn,
@@ -24,6 +25,8 @@ import {
   removeHandout,
   removeMember,
   replaceInvite,
+  rows,
+  saveToken,
   saveHandout,
   setHandoutRevealed,
   type Handout,
@@ -217,7 +220,19 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
               onEnd={() => update((c) => ({ ...c, ...endCombat(c) }))}
               onNext={() => update((c) => ({ ...c, ...nextTurn(c) }))}
               onPrevious={() => update((c) => ({ ...c, ...previousTurn(c) }))}
-              onAdd={(x) => update((c) => ({ ...c, ...addCombatant(c, x) }))}
+              canPlace={Boolean(campaign.activeMapId)}
+              onAdd={(x, place) =>
+                update((c) => {
+                  let next = c;
+                  if (place && c.activeMapId) {
+                    const map = (c.maps ?? []).find((m) => m.id === c.activeMapId)!;
+                    const tokenId = newId();
+                    next = { ...next, ...saveToken(next, map.id, { id: tokenId, name: x.name, x: Math.floor(columns(map) / 2), y: Math.floor(rows(map) / 2), memberId: null, hidden: x.hidden, color: "#D9476B" }) };
+                    return { ...next, ...addCombatant(next, { ...x, tokenId }) };
+                  }
+                  return { ...next, ...addCombatant(next, x) };
+                })
+              }
               onChange={(id, patch) => update((c) => ({ ...c, ...updateCombatant(c, id, patch) }))}
               onRemove={(id) => update((c) => ({ ...c, ...removeCombatant(c, id) }))}
             />
@@ -628,6 +643,7 @@ function Handouts({
 function CombatPanel({
   combat,
   canStart,
+  canPlace,
   onStart,
   onEnd,
   onNext,
@@ -638,11 +654,12 @@ function CombatPanel({
 }: {
   combat: Combat | null;
   canStart: boolean;
+  canPlace: boolean;
   onStart: () => void;
   onEnd: () => void;
   onNext: () => void;
   onPrevious: () => void;
-  onAdd: (c: { id: string; name: string; initiative: number | null; hidden: boolean; hp: { current: number; max: number } | null }) => void;
+  onAdd: (c: { id: string; name: string; initiative: number | null; hidden: boolean; hp: { current: number; max: number } | null }, placeOnMap: boolean) => void;
   onChange: (id: string, patch: { initiative?: number | null; hidden?: boolean; hp?: { current: number; max: number } | null }) => void;
   onRemove: (id: string) => void;
 }) {
@@ -650,6 +667,7 @@ function CombatPanel({
   const [mod, setMod] = useState("0");
   const [hp, setHp] = useState("");
   const [hidden, setHidden] = useState(false);
+  const [place, setPlace] = useState(true);
   const [confirmEnd, setConfirmEnd] = useState(false);
   if (!combat) {
     return (
@@ -739,7 +757,7 @@ function CombatPanel({
           e.preventDefault();
           if (!name.trim() || Number.isNaN(modifier)) return;
           const roll = rollDice(`1d20${modifier >= 0 ? "+" : ""}${modifier}`).total;
-          onAdd({ id: newId(), name: name.trim(), initiative: roll, hidden, hp: maxHp > 0 ? { current: maxHp, max: maxHp } : null });
+          onAdd({ id: newId(), name: name.trim(), initiative: roll, hidden, hp: maxHp > 0 ? { current: maxHp, max: maxHp } : null }, canPlace && place);
           setName("");
           setHp("");
         }}
@@ -760,6 +778,12 @@ function CombatPanel({
           <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} />
           <span>Hidden</span>
         </label>
+        {canPlace && (
+          <label className="row" style={{ alignItems: "center", gap: 6, minHeight: 44 }}>
+            <input type="checkbox" checked={place} onChange={(e) => setPlace(e.target.checked)} />
+            <span>Place on the map</span>
+          </label>
+        )}
         <button className="btn" disabled={!name.trim() || Number.isNaN(modifier)}>
           Add and roll
         </button>
@@ -767,7 +791,13 @@ function CombatPanel({
       <div style={{ marginTop: 12 }}>
         {confirmEnd ? (
           <span className="row">
-            <button className="btn btn-danger" onClick={onEnd}>
+            <button
+              className="btn btn-danger"
+              onClick={() => {
+                setConfirmEnd(false);
+                onEnd();
+              }}
+            >
               End combat
             </button>
             <button className="btn" onClick={() => setConfirmEnd(false)}>

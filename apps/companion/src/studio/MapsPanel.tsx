@@ -4,6 +4,7 @@
  */
 import { newId } from "@mimicbox/ruleset-dnd5e";
 import {
+  actingTokenId,
   addMap,
   columns,
   cycleDoor,
@@ -186,7 +187,8 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
         tool={tool}
         canMove={() => tool === "move"}
         walls={walls}
-        doors={map.doors ?? []}
+        doors={(map.doors ?? []).map((d) => ({ x: d.index % columns(map), y: Math.floor(d.index / columns(map)), open: d.open }))}
+        activeTokenId={campaign.activeMapId === map.id ? actingTokenId(campaign) : null}
         onMove={(t, x, y) => update((c) => ({ ...c, ...explore(saveToken(c, map.id, { ...t, x, y }), map.id) }))}
         onPaint={(cells, paintTool) =>
           update((c) => ({
