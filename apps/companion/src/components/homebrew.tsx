@@ -16,6 +16,7 @@ import {
   type HomebrewAttack,
   type HomebrewBonus,
   type HomebrewFeature,
+  type HomebrewSubclass,
 } from "@mimicbox/ruleset-dnd5e";
 import { useState, type ReactNode } from "react";
 import { Drawer } from "../screens/SheetScreen";
@@ -297,3 +298,135 @@ export function describeBonus(b: HomebrewBonus, character: Character): string {
   return item ? `${amount}, while ${item.name} is equipped` : b.itemId ? `${amount} (its item is gone)` : amount;
 }
 
+
+// ---------- subclasses ----------
+
+interface DraftFeature {
+  id: string;
+  level: string;
+  name: string;
+  text: string;
+  limited: boolean;
+  max: string;
+  reset: "long" | "short";
+}
+
+export function SubclassForm({
+  subclass,
+  classId,
+  className,
+  update,
+  onClose,
+  onCreated,
+}: {
+  subclass: HomebrewSubclass | null;
+  classId: string;
+  className: string;
+  update: Update;
+  onClose: () => void;
+  /** Called with the new id when a subclass is created, so the editor can choose it. */
+  onCreated?: (id: string) => void;
+}) {
+  const [name, setName] = useState(subclass?.name ?? "");
+  const [description, setDescription] = useState(subclass?.description ?? "");
+  const [features, setFeatures] = useState<DraftFeature[]>(
+    subclass?.features.map((f) => ({ id: f.id, level: String(f.level), name: f.name, text: f.text, limited: Boolean(f.uses), max: String(f.uses?.max ?? 1), reset: f.uses?.reset ?? "long" })) ?? [
+      { id: newId(), level: "3", name: "", text: "", limited: false, max: "1", reset: "long" },
+    ],
+  );
+  const patch = (id: string, p: Partial<DraftFeature>) => setFeatures((list) => list.map((f) => (f.id === id ? { ...f, ...p } : f)));
+  const bad = features.find((f) => !f.name.trim() || !(int(f.level) >= 1 && int(f.level) <= 20) || (f.limited && !(int(f.max) >= 1 && int(f.max) <= 99)));
+  const problem = !name.trim()
+    ? "Give the subclass a name."
+    : features.length === 0
+      ? "Add at least one feature."
+      : bad
+        ? !bad.name.trim()
+          ? "Every feature needs a name."
+          : "Feature levels must be 1 to 20, and uses 1 to 99."
+        : null;
+  return (
+    <Drawer title={subclass ? `Edit ${subclass.name}` : `Create a ${className} subclass`} onClose={onClose}>
+      <div className="stack">
+        <Field label="Subclass name">
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ember Knight" />
+        </Field>
+        <Field label="Description">
+          <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} />
+        </Field>
+        <h3>Features</h3>
+        {features.map((f, i) => (
+          <fieldset key={f.id} className="stack" style={{ border: 0, marginInline: 0, padding: 14, borderRadius: "var(--r-md)", background: "var(--hollow)" }} aria-label={`Feature ${i + 1}`}>
+            <strong>Feature {i + 1}</strong>
+            <div className="row">
+              <Field label="Class level">
+                <select className="input" value={f.level} onChange={(e) => patch(f.id, { level: e.target.value })}>
+                  {Array.from({ length: 20 }, (_, l) => (
+                    <option key={l + 1} value={l + 1}>
+                      {l + 1}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Feature name">
+                <input className="input" value={f.name} onChange={(e) => patch(f.id, { name: e.target.value })} />
+              </Field>
+            </div>
+            <Field label="What it does">
+              <textarea className="input" value={f.text} onChange={(e) => patch(f.id, { text: e.target.value })} />
+            </Field>
+            <label className="row" style={{ alignItems: "center", gap: 8 }}>
+              <input type="checkbox" checked={f.limited} onChange={(e) => patch(f.id, { limited: e.target.checked })} />
+              <span>It has limited uses</span>
+            </label>
+            {f.limited && (
+              <div className="row">
+                <Field label="Uses">
+                  <input className="input" inputMode="numeric" value={f.max} onChange={(e) => patch(f.id, { max: e.target.value })} style={{ width: 90 }} />
+                </Field>
+                <Field label="Regain on">
+                  <select className="input" value={f.reset} onChange={(e) => patch(f.id, { reset: e.target.value as "long" | "short" })}>
+                    <option value="long">Long Rest</option>
+                    <option value="short">Short or Long Rest</option>
+                  </select>
+                </Field>
+              </div>
+            )}
+            <button type="button" className="btn btn-quiet" onClick={() => setFeatures((list) => list.filter((x) => x.id !== f.id))}>
+              Remove this feature
+            </button>
+          </fieldset>
+        ))}
+        <button
+          type="button"
+          className="btn"
+          onClick={() => setFeatures((list) => [...list, { id: newId(), level: String(Math.min(20, (int(list.at(-1)?.level ?? "2") || 2) + 3)), name: "", text: "", limited: false, max: "1", reset: "long" }])}
+        >
+          Add a feature
+        </button>
+      </div>
+      <FormActions
+        saveLabel={subclass ? "Save subclass" : "Create subclass"}
+        canSave={!problem}
+        problem={name || features.some((f) => f.name) ? problem : null}
+        onSave={() => {
+          const id = subclass?.id ?? `hb-${newId()}`;
+          update((c) =>
+            saveHomebrew(c, "subclasses", {
+              id,
+              classId,
+              name: name.trim(),
+              description: description.trim(),
+              features: features
+                .map((f) => ({ id: f.id, level: int(f.level), name: f.name.trim(), text: f.text, uses: f.limited ? { max: int(f.max), reset: f.reset } : null }))
+                .sort((a, b) => a.level - b.level),
+            }),
+          );
+          if (!subclass) onCreated?.(id);
+          onClose();
+        }}
+        onDelete={subclass ? () => (update((c) => removeHomebrew(c, "subclasses", subclass.id)), onClose()) : undefined}
+      />
+    </Drawer>
+  );
+}

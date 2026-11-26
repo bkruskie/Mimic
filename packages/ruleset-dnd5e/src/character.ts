@@ -365,24 +365,43 @@ function validateHomebrew(h: unknown): void {
   for (const f of h.features) if (!isRecord(f) || typeof f.name !== "string" || typeof f.text !== "string") throw bad("feature list");
   for (const a of h.attacks) if (!isRecord(a) || typeof a.name !== "string" || typeof a.damage !== "string") throw bad("attack list");
   for (const b of h.bonuses) if (!isRecord(b) || typeof b.value !== "number" || !BONUS_TARGETS.has(String(b.target))) throw bad("bonus list");
+  if (h.subclasses !== undefined) {
+    if (!Array.isArray(h.subclasses)) throw bad("subclass list");
+    for (const sc of h.subclasses) {
+      if (!isRecord(sc) || typeof sc.name !== "string" || typeof sc.classId !== "string" || !Array.isArray(sc.features)) throw bad("subclass list");
+      for (const f of sc.features) if (!isRecord(f) || typeof f.level !== "number" || typeof f.name !== "string") throw bad("subclass list");
+    }
+  }
 }
 
 // ---------- homebrew ----------
 
+type HomebrewList<K extends keyof Homebrew> = NonNullable<Homebrew[K]>;
+
 /** Adds or replaces one homebrew entry (matched by id). */
-export function saveHomebrew<K extends keyof Homebrew>(c: Character, kind: K, entry: Homebrew[K][number]): Character {
+export function saveHomebrew<K extends keyof Homebrew>(c: Character, kind: K, entry: HomebrewList<K>[number]): Character {
   const hb: Homebrew = c.homebrew ?? { features: [], attacks: [], bonuses: [] };
-  const list = hb[kind] as Homebrew[K][number][];
+  const list = (hb[kind] ?? []) as HomebrewList<K>[number][];
   const next = list.some((e) => e.id === entry.id) ? list.map((e) => (e.id === entry.id ? entry : e)) : [...list, entry];
   return touch({ ...c, homebrew: { ...hb, [kind]: next } });
 }
 
-/** Removes one homebrew entry, and any uses spent on it. */
+/** Removes one homebrew entry and any uses spent on it. Removing a subclass also unpicks it. */
 export function removeHomebrew(c: Character, kind: keyof Homebrew, id: string): Character {
   const hb: Homebrew = c.homebrew ?? { features: [], attacks: [], bonuses: [] };
   const resourcesSpent = { ...c.state.resourcesSpent };
   delete resourcesSpent[`custom:${id}`];
-  return touch({ ...c, homebrew: { ...hb, [kind]: (hb[kind] as { id: string }[]).filter((e) => e.id !== id) }, state: { ...c.state, resourcesSpent } });
+  let classes = c.build.classes;
+  if (kind === "subclasses") {
+    for (const f of hb.subclasses?.find((x) => x.id === id)?.features ?? []) delete resourcesSpent[`custom:${f.id}`];
+    classes = classes.map((e) => (e.subclass === id ? { ...e, subclass: null } : e));
+  }
+  return touch({
+    ...c,
+    build: { ...c.build, classes },
+    homebrew: { ...hb, [kind]: ((hb[kind] ?? []) as { id: string }[]).filter((e) => e.id !== id) },
+    state: { ...c.state, resourcesSpent },
+  });
 }
 
 export interface CharacterFile {

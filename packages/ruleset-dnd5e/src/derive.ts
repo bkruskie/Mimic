@@ -232,6 +232,15 @@ export function derive(character: Character, content: Content): DerivedSheet {
 
   // ----- homebrew bonuses -----
   const homebrew = character.homebrew ?? { features: [], attacks: [], bonuses: [] };
+  const homebrewSubclasses = homebrew.subclasses ?? [];
+  /** The entry's subclass, from the content pack or the player's homebrew. */
+  const subclassOf = (e: (typeof build.classes)[number]) => {
+    if (!e.subclass) return null;
+    const packed = findClass(content, e.id).subclasses.find((s) => s.id === e.subclass);
+    if (packed) return packed;
+    const own = homebrewSubclasses.find((s) => s.id === e.subclass && s.classId === e.id);
+    return own ? { id: own.id, name: own.name, description: own.description, features: own.features.map((f) => ({ level: f.level, name: f.name, text: f.text })) } : null;
+  };
   const activeBonuses = homebrew.bonuses.filter((b) => {
     if (!b.itemId) return true;
     const item = character.inventory.find((i) => i.id === b.itemId);
@@ -721,7 +730,7 @@ export function derive(character: Character, content: Content): DerivedSheet {
   for (const e of entries) {
     if (e.id === "druid") grant("speak-with-animals", "Druidic", false, false);
     if (e.id === "ranger") grant("hunters-mark", "Favored Enemy", false, false);
-    const sub = e.subclass ? findClass(content, e.id).subclasses.find((s) => s.id === e.subclass) : null;
+    const sub = subclassOf(e);
     for (const f of sub?.features ?? []) {
       if (!/Spells$/.test(f.name) || f.level > e.level) continue;
       const table = subclassSpellTable(f.text, e.choices.landType ?? null);
@@ -750,6 +759,11 @@ export function derive(character: Character, content: Content): DerivedSheet {
     resources.push({ id: `free-cast:${g.id}`, name: `Free cast: ${spellName}`, max: species.id === "gnome" && g.id === "speak-with-animals" ? proficiencyBonus : 1, reset: "long", source: g.source });
   }
 
+  for (const e of entries) {
+    for (const f of homebrewSubclasses.find((s) => s.id === e.subclass && s.classId === e.id)?.features ?? []) {
+      if (f.uses && f.uses.max > 0 && f.level <= e.level) resources.push({ id: `custom:${f.id}`, name: f.name, max: f.uses.max, reset: f.uses.reset, source: `${findClass(content, e.id).name} subclass` });
+    }
+  }
   for (const f of homebrew.features) {
     if (f.uses && f.uses.max > 0) resources.push({ id: `custom:${f.id}`, name: f.name, max: f.uses.max, reset: f.uses.reset, source: `${f.kind}: ${f.name}` });
   }
@@ -759,7 +773,7 @@ export function derive(character: Character, content: Content): DerivedSheet {
   for (const e of entries) {
     const cls = findClass(content, e.id);
     features.push(...featuresFrom(cls, e.level));
-    const sub = cls.subclasses.find((s) => s.id === e.subclass);
+    const sub = subclassOf(e);
     if (sub) features.push(...sub.features.filter((f) => f.level <= e.level).map((f) => ({ source: sub.name, name: f.name, level: f.level, text: f.text })));
     for (const id of e.options ?? []) {
       for (const list of cls.options) {
@@ -786,7 +800,7 @@ export function derive(character: Character, content: Content): DerivedSheet {
   const classSummary = entries
     .map((e) => {
       const cls = findClass(content, e.id);
-      const sub = cls.subclasses.find((s) => s.id === e.subclass);
+      const sub = subclassOf(e);
       return `${cls.name} ${e.level}${sub ? ` (${sub.name})` : ""}`;
     })
     .join(" / ");

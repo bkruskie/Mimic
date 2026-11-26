@@ -335,10 +335,30 @@ export interface HomebrewAttack {
   notes: string;
 }
 
+export interface HomebrewSubclassFeature {
+  id: string;
+  /** Class level that grants it. */
+  level: number;
+  name: string;
+  text: string;
+  uses: { max: number; reset: "long" | "short" } | null;
+}
+
+export interface HomebrewSubclass {
+  /** Starts with "hb-" so it never collides with a content pack subclass. */
+  id: string;
+  classId: string;
+  name: string;
+  description: string;
+  features: HomebrewSubclassFeature[];
+}
+
 export interface Homebrew {
   features: HomebrewFeature[];
   attacks: HomebrewAttack[];
   bonuses: HomebrewBonus[];
+  /** Missing on files saved before homebrew subclasses. */
+  subclasses?: HomebrewSubclass[];
 }
 
 export interface Character {

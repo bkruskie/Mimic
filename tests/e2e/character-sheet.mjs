@@ -321,6 +321,22 @@ try {
   await pick("Mystic Arcanum: level 6 spell", 1);
   await page.waitForTimeout(200);
   check(!/Mystic Arcanum/.test(await page.locator("main").innerText().then((t) => t.split("Features and traits")[0])), "choosing the arcanum clears it from To do");
+  // A homebrew subclass, created and chosen from To do.
+  await tap("button", "Create your own subclass");
+  const sub = page.getByRole("dialog");
+  await sub.getByLabel("Subclass name").fill("The Hollow Star");
+  await sub.getByLabel("Feature name").fill("Starlit Mantle");
+  await sub.getByLabel("What it does").fill("Dim light around you.");
+  await sub.getByRole("button", { name: "Add a feature" }).click();
+  await sub.getByLabel("Class level").nth(1).selectOption("6");
+  await sub.getByLabel("Feature name").nth(1).fill("Void Step");
+  await sub.getByText("It has limited uses").nth(1).click();
+  await sub.getByLabel("Uses", { exact: true }).fill("2");
+  await shot("subclass-form");
+  await sub.getByRole("button", { name: "Create subclass" }).click();
+  await page.waitForTimeout(200);
+  check(/Warlock 11 \(The Hollow Star\)/.test(await page.locator(".sheet-top").innerText()), "creating a subclass chooses it");
+  check(/Void Step/.test(await page.locator("main").innerText()), "the homebrew subclass's features are listed");
   await shot("sheet-warlock-11");
   await tap("button", "Actions");
   check(/The Attack action makes 2 attacks \(Thirsting Blade/.test(await page.locator("main").innerText()), "Thirsting Blade gives two attacks");

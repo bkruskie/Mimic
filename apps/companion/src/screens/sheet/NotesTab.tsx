@@ -1,8 +1,8 @@
 import { MULTICLASS_GAINS, classOptionRule, derive, exportCharacter, findClass, levelUp, multiclassBlocker, type Character } from "@mimicbox/ruleset-dnd5e";
 import { useState } from "react";
 import { go } from "../../App";
-import { ClassOptionsEditor, PendingChoices } from "../../components/editors";
-import { BonusForm, FeatureForm, describeBonus } from "../../components/homebrew";
+import { ClassOptionsEditor, PendingChoices, SubclassEditor } from "../../components/editors";
+import { BonusForm, FeatureForm, SubclassForm, describeBonus } from "../../components/homebrew";
 import { Markdown } from "../../lib/markdown";
 import { content, useApp } from "../../lib/state";
 import { portraitFromFile } from "../../lib/edit";
@@ -22,6 +22,8 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
   const [editingOptions, setEditingOptions] = useState<number | null>(null);
   const [featureForm, setFeatureForm] = useState<{ id: string | null } | null>(null);
   const [bonusForm, setBonusForm] = useState<{ id: string | null } | null>(null);
+  const [subclassForm, setSubclassForm] = useState<string | null>(null);
+  const [changingSubclass, setChangingSubclass] = useState<number | null>(null);
   const hb = character.homebrew ?? { features: [], attacks: [], bonuses: [] };
   const entry = character.build.classes[0]!;
   const optionClasses = character.build.classes
@@ -73,12 +75,24 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
             Level up
           </button>
         </div>
+        {character.build.classes.map((e, i) =>
+          e.level >= 3 && e.subclass ? (
+            <button key={`sub-${e.id}`} className="btn" style={{ marginTop: 10, marginRight: 8 }} onClick={() => setChangingSubclass(i)}>
+              Change {findClass(content, e.id).name} subclass
+            </button>
+          ) : null,
+        )}
         {optionClasses.map((x) => (
           <button key={x.i} className="btn" style={{ marginTop: 10, marginRight: 8 }} onClick={() => setEditingOptions(x.i)}>
             Change {x.rule.label}
           </button>
         ))}
       </section>
+      {changingSubclass !== null && (
+        <Drawer title="Subclass" onClose={() => setChangingSubclass(null)}>
+          <SubclassEditor character={character} sheet={sheet} update={update} index={changingSubclass} />
+        </Drawer>
+      )}
       {editingOptions !== null && (
         <Drawer title={optionClasses.find((x) => x.i === editingOptions)?.rule.label ?? "Options"} onClose={() => setEditingOptions(null)}>
           <ClassOptionsEditor character={character} sheet={sheet} update={update} index={editingOptions} />
@@ -110,7 +124,7 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
         <p className="muted small" style={{ margin: "4px 0 10px" }}>
           Your own features, magic items and bonuses. Bonuses are added to the numbers they change, and each number still explains where it comes from.
         </p>
-        {hb.features.length + hb.bonuses.length > 0 && (
+        {hb.features.length + hb.bonuses.length + (hb.subclasses?.length ?? 0) > 0 && (
           <ul className="rows" aria-label="Your homebrew">
             {hb.features.map((f) => (
               <li key={f.id} className="resource spread">
@@ -123,6 +137,20 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
                   </span>
                 </span>
                 <button className="btn btn-quiet" aria-label={`Edit ${f.name}`} onClick={() => setFeatureForm({ id: f.id })}>
+                  Edit
+                </button>
+              </li>
+            ))}
+            {(hb.subclasses ?? []).map((sc) => (
+              <li key={sc.id} className="resource spread">
+                <span>
+                  <strong>{sc.name}</strong>
+                  <br />
+                  <span className="muted small">
+                    {findClass(content, sc.classId).name} subclass, {sc.features.length} feature{sc.features.length === 1 ? "" : "s"}
+                  </span>
+                </span>
+                <button className="btn btn-quiet" aria-label={`Edit ${sc.name}`} onClick={() => setSubclassForm(sc.id)}>
                   Edit
                 </button>
               </li>
@@ -154,6 +182,11 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
         </p>
       </section>
       {featureForm && <FeatureForm feature={hb.features.find((f) => f.id === featureForm.id) ?? null} update={update} onClose={() => setFeatureForm(null)} />}
+      {subclassForm &&
+        (() => {
+          const sc = hb.subclasses?.find((x) => x.id === subclassForm);
+          return sc ? <SubclassForm subclass={sc} classId={sc.classId} className={findClass(content, sc.classId).name} update={update} onClose={() => setSubclassForm(null)} /> : null;
+        })()}
       {bonusForm && <BonusForm bonus={hb.bonuses.find((b) => b.id === bonusForm.id) ?? null} character={character} update={update} onClose={() => setBonusForm(null)} />}
 
       <section className="section stack">

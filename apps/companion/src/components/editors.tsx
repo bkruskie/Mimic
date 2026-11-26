@@ -28,10 +28,11 @@ import {
   type PendingChoice,
   type SkillId,
 } from "@mimicbox/ruleset-dnd5e";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Markdown } from "../lib/markdown";
 import { content } from "../lib/state";
 import { patchFeatAt, setFeatAt, toggle, updateClassEntry } from "../lib/edit";
+import { SubclassForm } from "./homebrew";
 import { MagicInitiateEditor, SpellChooser } from "./spells";
 
 export type Update = (fn: (c: Character) => Character) => void;
@@ -360,19 +361,46 @@ export function WeaponMasteryEditor({ character, update, index = 0 }: EditorProp
 export function SubclassEditor({ character, update, index = 0 }: EditorProps) {
   const entry = character.build.classes[index] ?? character.build.classes[0]!;
   const cls = findClass(content, entry.id);
+  const [form, setForm] = useState<{ id: string | null } | null>(null);
+  const own = (character.homebrew?.subclasses ?? []).filter((s) => s.classId === entry.id);
+  const choose = (id: string) => update((c) => updateClassEntry(c, { subclass: id }, index));
+  const options = [
+    ...cls.subclasses.map((s) => ({ id: s.id, name: s.name, description: s.description, homebrew: false })),
+    ...own.map((s) => ({ id: s.id, name: s.name, description: s.description || "Your own subclass.", homebrew: true })),
+  ];
   return (
-    <Block title={`${cls.name} subclass`}>
-      {cls.subclasses.map((s) => (
+    <Block title={`${cls.name} subclass`} hint="The rules include one subclass per class. Create your own for any other.">
+      {options.map((s) => (
         <div key={s.id} className="panel" style={{ marginBottom: 8 }}>
           <div className="spread">
             <h3>{s.name}</h3>
-            <button type="button" className="chip" aria-pressed={entry.subclass === s.id} onClick={() => update((c) => updateClassEntry(c, { subclass: s.id }, index))}>
-              {entry.subclass === s.id ? "Chosen" : "Choose"}
-            </button>
+            <span className="row">
+              {s.homebrew && (
+                <button type="button" className="btn btn-quiet" aria-label={`Edit ${s.name}`} onClick={() => setForm({ id: s.id })}>
+                  Edit
+                </button>
+              )}
+              <button type="button" className="chip" aria-pressed={entry.subclass === s.id} onClick={() => choose(s.id)}>
+                {entry.subclass === s.id ? "Chosen" : "Choose"}
+              </button>
+            </span>
           </div>
           <Markdown text={s.description} />
         </div>
       ))}
+      <button type="button" className="btn" onClick={() => setForm({ id: null })}>
+        Create your own subclass
+      </button>
+      {form && (
+        <SubclassForm
+          subclass={own.find((s) => s.id === form.id) ?? null}
+          classId={entry.id}
+          className={cls.name}
+          update={update}
+          onClose={() => setForm(null)}
+          onCreated={choose}
+        />
+      )}
     </Block>
   );
 }

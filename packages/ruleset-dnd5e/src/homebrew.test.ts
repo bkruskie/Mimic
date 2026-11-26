@@ -116,3 +116,36 @@ describe("schema version 2", () => {
     expect(() => importCharacter(bad, content)).toThrow(/homebrew bonus list isn't valid/);
   });
 });
+
+describe("homebrew subclasses", () => {
+  const oath = {
+    id: "hb-oath-of-embers",
+    classId: "fighter",
+    name: "Ember Knight",
+    description: "A fighter sworn to a forge-spirit.",
+    features: [
+      { id: "sf1", level: 3, name: "Kindled Blade", text: "Your weapon sheds light.", uses: { max: 2, reset: "short" as const } },
+      { id: "sf2", level: 7, name: "Ashen Ward", text: "Resist fire.", uses: null },
+    ],
+  };
+  it("lists features up to the class level and tracks their uses", () => {
+    let c = saveHomebrew(fighter(), "subclasses", oath);
+    c = { ...c, build: { ...c.build, classes: [{ ...c.build.classes[0]!, level: 3, subclass: oath.id }] } };
+    const s = derive(c, content);
+    expect(s.classSummary).toBe("Fighter 3 (Ember Knight)");
+    expect(s.features.filter((f) => f.source === "Ember Knight").map((f) => f.name)).toEqual(["Kindled Blade"]);
+    expect(s.resources.find((r) => r.id === "custom:sf1")?.max).toBe(2);
+    expect(s.pending.some((p) => p.kind === "subclass")).toBe(false);
+  });
+  it("unpicks the subclass when it is deleted", () => {
+    let c = saveHomebrew(fighter(), "subclasses", oath);
+    c = { ...c, build: { ...c.build, classes: [{ ...c.build.classes[0]!, level: 3, subclass: oath.id }] } };
+    c = removeHomebrew(c, "subclasses", oath.id);
+    expect(c.build.classes[0]!.subclass).toBeNull();
+    expect(derive(c, content).pending.some((p) => p.kind === "subclass")).toBe(true);
+  });
+  it("survives export and import", () => {
+    const c = saveHomebrew(fighter(), "subclasses", oath);
+    expect(importCharacter(JSON.parse(JSON.stringify(exportCharacter(c, content))), content).homebrew?.subclasses).toEqual([oath]);
+  });
+});
