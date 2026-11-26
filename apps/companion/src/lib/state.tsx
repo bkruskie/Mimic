@@ -225,6 +225,7 @@ export function useRoller(characterId: string | null) {
         await vault.addRoll(entry);
         await loadHistory();
       }
+      return shownRoll;
     },
     [vault, characterId, loadHistory],
   );

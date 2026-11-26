@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { go } from "../App";
 import { BackIcon, BagIcon, CloseIcon, D20Icon, ScrollIcon, SparkIcon, StarIcon, SwordIcon } from "../lib/icons";
 import { content, useCharacter, useRoller, type ShownRoll } from "../lib/state";
+import { useTable } from "../lib/table";
 import { AbilitiesTab } from "./sheet/AbilitiesTab";
 import { ActionsTab } from "./sheet/ActionsTab";
 import { GearTab } from "./sheet/GearTab";
@@ -50,8 +51,18 @@ export function SheetScreen({ id }: { id: string }) {
   const roller = useRoller(id);
   const [tab, setTab] = useState<Tab>(() => (sessionStorage.getItem(`tab:${id}`) as Tab | null) ?? "actions");
   const [lastAsk, setLastAsk] = useState<RollAsk | null>(null);
-  const [drawer, setDrawer] = useState<"hp" | "conditions" | "dice" | "history" | null>(null);
+  const [drawer, setDrawer] = useState<"hp" | "conditions" | "dice" | "history" | "party" | null>(null);
   const cols = useColumns();
+  const table = useTable();
+  const atTable = table.seat?.characterId === id;
+  const shareCharacter = table.shareCharacter;
+
+  // While at a table, the DM's copy follows every change, a moment after it is made.
+  useEffect(() => {
+    if (!atTable || !character) return;
+    const t = window.setTimeout(() => shareCharacter(character), 600);
+    return () => window.clearTimeout(t);
+  }, [atTable, character, shareCharacter]);
 
   useEffect(() => {
     try {
@@ -78,8 +89,14 @@ export function SheetScreen({ id }: { id: string }) {
     const expression = r.d20Modifier !== undefined ? d20Notation(r.d20Modifier, mode) : r.expression;
     const label = mode === "normal" ? r.label : `${r.label} (${mode === "advantage" ? "Advantage" : "Disadvantage"})`;
     setLastAsk(r);
-    void roller.roll({ label, expression });
+    void rollAndShare(label, expression);
   };
+  async function rollAndShare(label: string, expression: string) {
+    const shown = await roller.roll({ label, expression });
+    if (atTable && character) {
+      table.shareRoll({ characterName: character.name, label, expression, total: shown.result.total, breakdown: shown.breakdown, ...(shown.flag ? { flag: shown.flag } : {}) });
+    }
+  }
   const props: SheetProps = { character, sheet, update, ask: (r) => ask(r) };
   const hpPct = sheet.hp.max.value ? Math.max(0, Math.min(100, (sheet.hp.current / sheet.hp.max.value) * 100)) : 0;
 
@@ -136,6 +153,11 @@ export function SheetScreen({ id }: { id: string }) {
               </button>
             )}
             {character.state.heroicInspiration && <span className="chip" aria-pressed="true">Heroic Inspiration</span>}
+            {atTable && (
+              <button className={`chip chip-table ${table.status}`} onClick={() => setDrawer("party")}>
+                {tableStatusText(table.status, table.invite?.campaign ?? "the game")}
+              </button>
+            )}
             <button className="chip" onClick={() => setDrawer("conditions")}>
               {character.state.conditions.length || character.state.exhaustion ? "Edit conditions" : "Add a condition"}
             </button>
@@ -216,7 +238,7 @@ export function SheetScreen({ id }: { id: string }) {
             if (!lastAsk?.damage) return;
             const d = lastAsk.damage;
             setLastAsk({ label: d.label, expression: d.expression });
-            void roller.roll({ label: crit ? `${d.label} (critical)` : d.label, expression: crit ? criticalNotation(d.expression) : d.expression });
+            void rollAndShare(crit ? `${d.label} (critical)` : d.label, crit ? criticalNotation(d.expression) : d.expression);
           }}
           onHistory={() => {
             roller.close();
@@ -225,6 +247,7 @@ export function SheetScreen({ id }: { id: string }) {
         />
       )}
       {drawer === "hp" && <HpDrawer {...props} onClose={() => setDrawer(null)} />}
+      {drawer === "party" && <PartyDrawer onClose={() => setDrawer(null)} />}
       {drawer === "conditions" && <ConditionsDrawer {...props} onClose={() => setDrawer(null)} />}
       {drawer === "dice" && (
         <DiceDrawer
@@ -483,6 +506,85 @@ function DiceDrawer({ onClose, onRoll }: { onClose: () => void; onRoll: (express
           Roll
         </button>
       </form>
+    </Drawer>
+  );
+}
+
+function tableStatusText(status: ReturnType<typeof useTable>["status"], campaign: string): string {
+  switch (status) {
+    case "connected":
+      return `At ${campaign}`;
+    case "waiting":
+      return `Waiting for the DM of ${campaign}`;
+    case "connecting":
+      return `Connecting to ${campaign}`;
+    case "denied":
+      return `${campaign}: not let in`;
+    case "error":
+      return `${campaign}: can't connect`;
+    default:
+      return campaign;
+  }
+}
+
+function PartyDrawer({ onClose }: { onClose: () => void }) {
+  const table = useTable();
+  const campaign = table.invite?.campaign ?? "The game";
+  return (
+    <Drawer title={campaign} onClose={onClose}>
+      {table.problem ? (
+        <p className="notice">{table.problem}</p>
+      ) : (
+        <p className="muted small" style={{ marginTop: 0 }}>
+          {table.status === "connected"
+            ? "Connected to your DM. Your sheet and rolls are shared with the table as you play."
+            : table.status === "waiting"
+              ? "Waiting for your DM's app. It connects by itself when the DM starts hosting."
+              : "Connecting…"}
+        </p>
+      )}
+      <h3>Party</h3>
+      {table.party.length === 0 && <p className="muted">No one else yet.</p>}
+      <ul className="rows" aria-label="Party">
+        {table.party.map((m) => (
+          <li key={m.userId} className="resource">
+            <div className="spread">
+              <span>
+                <strong>{m.character?.name ?? m.playerName}</strong>
+                <br />
+                <span className="muted small">
+                  {m.character ? `${m.character.classSummary}, played by ${m.playerName}` : `${m.playerName} hasn't shared a character yet`}
+                </span>
+              </span>
+              <span className={m.connected ? "small" : "muted small"}>{m.connected ? "Here" : "Away"}</span>
+            </div>
+            {m.character && (
+              <div className="muted small" style={{ marginTop: 6 }}>
+                HP {m.character.hp.current} of {m.character.hp.max}
+                {m.character.hp.temp ? ` (+${m.character.hp.temp} temporary)` : ""}, AC {m.character.ac}
+                {m.character.conditions.length ? `, ${m.character.conditions.join(", ")}` : ""}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+      <h3 style={{ marginTop: 16 }}>Table rolls</h3>
+      {table.rolls.length === 0 && <p className="muted">No rolls shared yet.</p>}
+      <ul className="history" aria-label="Table rolls">
+        {[...table.rolls].reverse().map((r) => (
+          <li key={r.id}>
+            <span className={`t ${r.flag ?? ""}`}>{r.total}</span>
+            <span className="grow">
+              {r.characterName}: {r.label}
+              <br />
+              <span className="breakdown small">{r.breakdown}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <button className="btn" style={{ marginTop: 16 }} onClick={() => void table.leave().then(onClose)}>
+        Leave the game
+      </button>
     </Drawer>
   );
 }

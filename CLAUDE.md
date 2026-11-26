@@ -25,7 +25,7 @@ Read `docs/architecture.md` before changing architecture, data models or the roa
 
 ```sh
 pnpm check        # type check, unit tests, build
-pnpm test:e2e     # browser test (needs Chrome; CHROME_PATH to override)
+pnpm test:e2e     # browser tests: the sheet, and a hosted game over a local relay (needs Chrome; CHROME_PATH to override)
 node tools/srd-import/import.mjs <path to srd-5.2/en>   # rebuild the SRD content pack
 node tools/icons/render.mjs                             # re-render app icons after editing icon.svg
 ```
