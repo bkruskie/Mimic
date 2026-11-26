@@ -1,8 +1,9 @@
 import { formatModifier } from "@mimicbox/dice";
-import { ABILITY_NAMES, restoreSlot, spendSlot, type SpellDef } from "@mimicbox/ruleset-dnd5e";
+import { ABILITY_NAMES, classSpellLists, findClass, restoreSlot, spendSlot, type SpellDef } from "@mimicbox/ruleset-dnd5e";
 import { useState } from "react";
 import { MysticArcanumEditor, arcanumLevels } from "../../components/editors";
 import { ClassSpellsEditor, SpellDetail, spellTags, useSpells } from "../../components/spells";
+import { content } from "../../lib/state";
 import { Drawer, type SheetProps } from "../SheetScreen";
 
 export function SpellsTab({ character, sheet, update, ask }: SheetProps) {
@@ -10,7 +11,14 @@ export function SpellsTab({ character, sheet, update, ask }: SheetProps) {
   const [editing, setEditing] = useState(false);
   const sc = sheet.spellcasting;
   const byId = new Map((spells ?? []).map((s) => [s.id, s]));
-  const known = [...new Set([...character.spells.cantrips, ...character.spells.prepared])].map((id) => byId.get(id)).filter((s): s is SpellDef => Boolean(s));
+  const multiple = sheet.spellcastingClasses.length > 1;
+  // Which class each chosen spell belongs to, for characters with more than one spellcasting class.
+  const classOf = new Map<string, string>();
+  for (const x of sheet.spellcastingClasses) {
+    const own = classSpellLists(character, x.classId);
+    for (const id of [...own.cantrips, ...own.prepared]) if (!classOf.has(id)) classOf.set(id, findClass(content, x.classId).name);
+  }
+  const known = [...classOf.keys()].map((id) => byId.get(id)).filter((s): s is SpellDef => Boolean(s));
   const granted = sheet.grantedSpells
     .filter((g) => !known.some((k) => k.id === g.id))
     .map((g) => ({ g, spell: byId.get(g.id) }))
@@ -30,26 +38,31 @@ export function SpellsTab({ character, sheet, update, ask }: SheetProps) {
 
   return (
     <>
-      {sc && (
-        <section className="section">
+      {sheet.spellcastingClasses.map((x) => (
+        <section className="section" key={x.classId}>
+          {multiple && <h2>{findClass(content, x.classId).name} spells</h2>}
           <div className="ability-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
             <div className="ability">
               <span className="abbr">Ability</span>
               <span className="mod" style={{ fontSize: "var(--t-xl)", padding: "8px 0" }}>
-                {ABILITY_NAMES[sc.ability].slice(0, 3)}
+                {ABILITY_NAMES[x.ability].slice(0, 3)}
               </span>
             </div>
             <div className="ability">
               <span className="abbr">Save DC</span>
-              <span className="mod">{sc.saveDc.value}</span>
+              <span className="mod">{x.saveDc.value}</span>
             </div>
-            <button className="ability" onClick={() => ask({ label: "Spell attack", expression: "", d20Modifier: sc.attack.value })}>
+            <button
+              className="ability"
+              aria-label={`${findClass(content, x.classId).name} spell attack ${formatModifier(x.attack.value)}`}
+              onClick={() => ask({ label: multiple ? `${findClass(content, x.classId).name} spell attack` : "Spell attack", expression: "", d20Modifier: x.attack.value })}
+            >
               <span className="abbr">Attack</span>
-              <span className="mod">{formatModifier(sc.attack.value)}</span>
+              <span className="mod">{formatModifier(x.attack.value)}</span>
             </button>
           </div>
         </section>
-      )}
+      ))}
 
       {sc && (sc.slots.some((n) => n > 0) || sc.pact) && (
         <section className="section">
@@ -122,7 +135,7 @@ export function SpellsTab({ character, sheet, update, ask }: SheetProps) {
             {list
               .sort((a, b) => a.name.localeCompare(b.name))
               .map((s) => (
-                <SpellRow key={s.id} spell={s} />
+                <SpellRow key={s.id} spell={s} note={multiple ? `${spellTags(s)}. ${classOf.get(s.id)}` : undefined} />
               ))}
           </section>
         ))}
@@ -148,7 +161,9 @@ export function SpellsTab({ character, sheet, update, ask }: SheetProps) {
       )}
       {editing && (
         <Drawer title="Choose spells" onClose={() => setEditing(false)}>
-          <ClassSpellsEditor character={character} sheet={sheet} update={update} />
+          {sheet.spellcastingClasses.map((x) => (
+            <ClassSpellsEditor key={x.classId} character={character} sheet={sheet} update={update} classId={x.classId} />
+          ))}
           {arcanumLevels(character).map((level) => (
             <MysticArcanumEditor key={level} character={character} update={update} spellLevel={level} />
           ))}

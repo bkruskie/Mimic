@@ -252,6 +252,27 @@ try {
   check((await page.locator('.pip[aria-pressed="true"]').count()) === 1, "spending a slot marks it used");
   await shot("sheet-spells-wizard");
 
+  // ----- Multiclassing: the Wizard takes a level of Fighter -----
+  await tap("button", "Notes");
+  await tap("button", "Level up");
+  await tap("button", "Add a class");
+  const newClass = page.getByRole("group", { name: "New class" });
+  check(await newClass.getByRole("button", { name: /^Barbarian/ }).isDisabled(), "Barbarian is unavailable without Strength 13");
+  check(/Needs Strength 13 or higher/.test(await newClass.getByRole("button", { name: /^Barbarian/ }).innerText()), "the reason is shown on the class");
+  await newClass.getByRole("button", { name: /^Fighter/ }).click();
+  await shot("level-up-multiclass");
+  await page.getByRole("button", { name: "Reach level 2" }).click();
+  await page.waitForTimeout(200);
+  check(/Wizard 1 \/ Fighter 1/.test(await page.locator(".sheet-top").innerText()), "header shows Wizard 1 / Fighter 1");
+  const mcTodo = await page.locator("main").innerText();
+  check(/Fighter: Fighting Style/.test(mcTodo) && /Fighter: Weapon Mastery/.test(mcTodo), "the Fighter's level 1 choices appear under To do");
+  await page.getByRole("button", { name: /^Defense/ }).click();
+  await tap("button", "Skills");
+  check(/Light armor, Medium armor, Shields/.test(await page.locator("main").innerText()), "the Fighter adds Light and Medium armor and Shields, not Heavy");
+  await tap("button", "Spells");
+  check((await page.locator(".pip").count()) === 2, "a single spellcasting class keeps its own slots");
+  await shot("sheet-multiclass");
+
   // ----- High levels: Dwarf Warlock (Soldier) from 1 to 11 -----
   await page.getByRole("button", { name: "Back to the vault" }).click();
   await tap("button", "Build a character");

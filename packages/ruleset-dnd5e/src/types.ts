@@ -234,7 +234,10 @@ export interface ClassEntry {
   subclass: string | null;
   skills: SkillId[];
   expertise: SkillId[];
-  /** Rolled hit points for levels 2 and up, by index (level 2 is index 0). Missing entries use the fixed average. */
+  /**
+   * Rolled hit points by level. For the first class, index 0 is level 2 (level 1 is always the maximum);
+   * for classes added by multiclassing, index 0 is that class's level 1. Missing entries use the fixed average.
+   */
   hitPointRolls: (number | null)[];
   /** Named class choices: "divineOrder", "primalOrder", "landType", "elementalAffinity". */
   choices: Record<string, string>;
@@ -267,6 +270,8 @@ export interface PlayState {
   tempHp: number;
   deathSaves: { successes: number; failures: number };
   hitDiceSpent: number;
+  /** Spent Hit Point Dice by die size ("8", "10"), for characters with more than one kind. */
+  hitDiceSpentByDie?: Record<string, number>;
   /** Expended spell slots by slot level (index 0 = level 1). */
   slotsSpent: number[];
   pactSlotsSpent: number;
@@ -373,6 +378,11 @@ export interface Character {
     prepared: string[];
     /** Warlock Mystic Arcanum: spell level ("6" to "9") to spell id. Missing on older files. */
     arcanum?: Record<string, string>;
+    /**
+     * Spells of spellcasting classes after the first, by class id. The first spellcasting class keeps using
+     * `cantrips` and `prepared` above, so single-class characters are unchanged.
+     */
+    byClass?: Record<string, { cantrips: string[]; prepared: string[] }>;
   };
   inventory: InventoryItem[];
   currency: Currency;

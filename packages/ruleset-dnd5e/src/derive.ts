@@ -10,6 +10,9 @@ import {
   EPIC_BOON_LEVEL,
   FEAT_ABILITY_INCREASE,
   FIGHTING_STYLE_LEVEL,
+  MULTICLASS_GAINS,
+  MULTICLASS_MINIMUM,
+  MULTICLASS_SLOTS,
   MYSTIC_ARCANUM,
   SPECIES_CHOICES,
   SPECIES_RESISTANCE,
@@ -20,9 +23,12 @@ import {
   championCritRange,
   classOptionRule,
   classResources,
+  hasSpellcastingFeature,
   laterSaveProficiencies,
+  multiclassCasterLevel,
   optionLevelPrerequisite,
   optionRequires,
+  primaryAbilities,
   expertiseCount,
   speciesResources,
   weaponMasteryCount,
@@ -149,8 +155,13 @@ export interface DerivedSheet {
   hp: { max: Sourced; current: number; temp: number };
   hitDice: { classId: string; die: number; total: number }[];
   hitDiceAvailable: number;
+  /** Hit Point Dice grouped by size, with how many are left of each. */
+  hitDiceByDie: { die: number; total: number; available: number }[];
   attacks: Attack[];
+  /** The first spellcasting class (Warlock included), kept for single-class screens. */
   spellcasting: SpellcastingInfo | null;
+  /** Every spellcasting class, in class order. Slots and Pact Magic slots are shared between them. */
+  spellcastingClasses: SpellcastingInfo[];
   grantedSpells: GrantedSpell[];
   resources: ResourceDef[];
   features: FeatureEntry[];
@@ -326,7 +337,7 @@ export function derive(character: Character, content: Content): DerivedSheet {
   const expertise = new Set(entries.flatMap((e) => e.expertise));
   const bardLevel = entries.find((e) => e.id === "bard")?.level ?? 0;
   const jackOfAllTrades = bardLevel >= 2;
-  const order = primary?.choices.divineOrder ?? primary?.choices.primalOrder ?? null;
+  const order = entries.map((e) => e.choices.divineOrder ?? e.choices.primalOrder).find(Boolean) ?? null;
   const wisBonus = Math.max(1, mods.wis);
 
   const skills = {} as DerivedSheet["skills"];
@@ -354,8 +365,18 @@ export function derive(character: Character, content: Content): DerivedSheet {
   // ----- class choices and pending picks -----
   for (const e of entries) {
     const cls = findClass(content, e.id);
-    if (e.skills.length < cls.skills.choose) {
-      pending.push({ kind: "class-skills", message: `Choose ${cls.skills.choose - e.skills.length} more ${cls.name} skill${cls.skills.choose - e.skills.length === 1 ? "" : "s"}.`, count: cls.skills.choose - e.skills.length, key: e.id });
+    const skillCount = e === primary ? cls.skills.choose : MULTICLASS_GAINS[e.id]?.skills.count ?? 0;
+    if (e.skills.length < skillCount) {
+      pending.push({ kind: "class-skills", message: `Choose ${skillCount - e.skills.length} more ${cls.name} skill${skillCount - e.skills.length === 1 ? "" : "s"}.`, count: skillCount - e.skills.length, key: e.id });
+    }
+    if (e !== primary) {
+      for (const c of [primary!, e]) {
+        const req = primaryAbilities(findClass(content, c.id).primaryAbility);
+        const met = req.all ? req.abilities.every((a) => scores[a].value >= MULTICLASS_MINIMUM) : req.abilities.some((a) => scores[a].value >= MULTICLASS_MINIMUM);
+        if (!met && req.abilities.length) {
+          warnings.push(`Multiclassing into ${cls.name} needs ${req.abilities.map((a) => ABILITY_NAMES[a]).join(req.all ? " and " : " or ")} of ${MULTICLASS_MINIMUM} or more${c === primary ? ` for your ${findClass(content, c.id).name} levels too` : ""}.`);
+        }
+      }
     }
     const needExpertise = expertiseCount(e.id, e.level) - e.expertise.length;
     if (needExpertise > 0) pending.push({ kind: "expertise", message: `Choose ${needExpertise} skill${needExpertise === 1 ? "" : "s"} for Expertise.`, count: needExpertise, key: e.id });
@@ -443,8 +464,9 @@ export function derive(character: Character, content: Content): DerivedSheet {
     hitDice.push({ classId: e.id, die: cls.hitDie, total: e.level });
     for (let l = 1; l <= e.level; l++) {
       const first = idx === 0 && l === 1;
-      const roll = first ? cls.hitDie : e.hitPointRolls[l - 2] ?? cls.hitDie / 2 + 1;
-      hpSources.push({ label: first ? `${cls.name} level 1 (max d${cls.hitDie})` : `${cls.name} level ${l} (${e.hitPointRolls[l - 2] ? "rolled" : "average"} d${cls.hitDie})`, value: roll });
+      const rolled = idx === 0 ? e.hitPointRolls[l - 2] : e.hitPointRolls[l - 1];
+      const roll = first ? cls.hitDie : rolled ?? cls.hitDie / 2 + 1;
+      hpSources.push({ label: first ? `${cls.name} level 1 (max d${cls.hitDie})` : `${cls.name} level ${l} (${rolled ? "rolled" : "average"} d${cls.hitDie})`, value: roll });
     }
   });
   if (mods.con !== 0) hpSources.push({ label: `Constitution modifier × ${level}`, value: mods.con * level });
@@ -470,6 +492,9 @@ export function derive(character: Character, content: Content): DerivedSheet {
 
   const armorTraining = { light: false, medium: false, heavy: false, shield: false };
   if (primaryClass) Object.assign(armorTraining, primaryClass.armor);
+  for (const e of entries.slice(1)) {
+    for (const [k, v] of Object.entries(MULTICLASS_GAINS[e.id]?.armor ?? {})) if (v) armorTraining[k as keyof typeof armorTraining] = true;
+  }
   if (order === "protector") armorTraining.heavy = true;
   if (order === "warden") armorTraining.medium = true;
   const trainedFor = (a: ArmorDef) => armorTraining[a.category];
@@ -550,7 +575,9 @@ export function derive(character: Character, content: Content): DerivedSheet {
     const isMonkWeapon = Boolean(monk) && weapon.kind === "melee" && (weapon.category === "simple" || weapon.properties.includes("light"));
     let ability: Ability = weapon.kind === "ranged" ? "dex" : "str";
     if (weapon.properties.includes("finesse") || isMonkWeapon) ability = mods.dex > mods.str ? "dex" : "str";
-    const prof = primaryClass ? weaponProficient(weapon, primaryClass, primary!.choices) : false;
+    const prof =
+      (primaryClass ? weaponProficient(weapon, primaryClass, primary!.choices) : false) ||
+      entries.slice(1).some((e) => (weapon.category === "martial" && MULTICLASS_GAINS[e.id]?.martial) || e.choices.divineOrder === "protector" || e.choices.primalOrder === "warden");
     const toHit: Source[] = [{ label: `${ABILITY_NAMES[ability]} modifier`, value: mods[ability] }];
     if (prof) toHit.push({ label: "Proficiency", value: proficiencyBonus });
     if (featIds.has("archery") && weapon.kind === "ranged") toHit.push({ label: "Archery fighting style", value: 2 });
@@ -603,39 +630,52 @@ export function derive(character: Character, content: Content): DerivedSheet {
   }
 
   // ----- spellcasting -----
-  let spellcasting: SpellcastingInfo | null = null;
-  const caster = entries.find((e) => SPELLCASTING_ABILITY[e.id]);
-  if (caster) {
+  const casterEntries = entries.filter((e) => SPELLCASTING_ABILITY[e.id]);
+  const withSpellcasting = casterEntries.filter((e) => hasSpellcastingFeature(e.id));
+  let sharedSlots: number[] = [];
+  if (withSpellcasting.length > 1) sharedSlots = [...(MULTICLASS_SLOTS[multiclassCasterLevel(entries) - 1] ?? [])];
+  else if (withSpellcasting.length === 1) {
+    const only = withSpellcasting[0]!;
+    sharedSlots = [...(findClass(content, only.id).progression[only.level - 1]?.spellSlots ?? [])];
+  }
+  const warlockEntry = casterEntries.find((e) => e.id === "warlock");
+  const warlockRow = warlockEntry ? findClass(content, "warlock").progression[warlockEntry.level - 1] : undefined;
+  const pactCount = Number.parseInt(warlockRow?.columns["Spell Slots"] ?? "", 10);
+  const pact = warlockRow && pactCount > 0 ? { count: pactCount, level: Number.parseInt(warlockRow.columns["Slot Level"] ?? "1", 10) } : null;
+  const multipleCasters = casterEntries.length > 1;
+  const spellcastingClasses: SpellcastingInfo[] = casterEntries.map((caster) => {
     const cls = findClass(content, caster.id);
     const row = cls.progression[caster.level - 1]!;
     const ability = SPELLCASTING_ABILITY[caster.id]!;
-    const slots = row.spellSlots ? [...row.spellSlots] : [];
-    const pactCount = Number.parseInt(row.columns["Spell Slots"] ?? "", 10);
-    const pact = caster.id === "warlock" && pactCount > 0 ? { count: pactCount, level: Number.parseInt(row.columns["Slot Level"] ?? "1", 10) } : null;
-    const maxSpellLevel = pact ? pact.level : slots.reduce((m, n, i) => (n > 0 ? i + 1 : m), 0);
-    const extraCantrip = order === "thaumaturge" || order === "magician" ? 1 : 0;
+    // Prepared spells are chosen as if single-classed: the class's own table limits their level.
+    const ownMax = caster.id === "warlock" ? pact?.level ?? 0 : (row.spellSlots ?? []).reduce((m, n, i) => (n > 0 ? i + 1 : m), 0);
+    const extraCantrip = (caster.id === "cleric" && caster.choices.divineOrder === "thaumaturge") || (caster.id === "druid" && caster.choices.primalOrder === "magician") ? 1 : 0;
     const list: Record<number, string[]> = {};
-    for (let l = 0; l <= maxSpellLevel; l++) list[l] = cls.spellList[String(l)] ?? [];
-    spellcasting = {
+    for (let l = 0; l <= ownMax; l++) list[l] = cls.spellList[String(l)] ?? [];
+    const info: SpellcastingInfo = {
       classId: caster.id,
       ability,
       saveDc: sum([{ label: "Base", value: 8 }, { label: `${ABILITY_NAMES[ability]} modifier`, value: mods[ability] }, { label: "Proficiency", value: proficiencyBonus }, ...bonusSources("spellDc")]),
       attack: sum([{ label: `${ABILITY_NAMES[ability]} modifier`, value: mods[ability] }, { label: "Proficiency", value: proficiencyBonus }, ...bonusSources("spellAttack")]),
       cantripLimit: (Number.parseInt(row.columns["Cantrips"] ?? "0", 10) || 0) + extraCantrip,
       preparedLimit: Number.parseInt(row.columns["Prepared Spells"] ?? "0", 10) || 0,
-      slots,
+      slots: sharedSlots,
       pact,
-      maxSpellLevel,
+      maxSpellLevel: ownMax,
       list,
     };
-    const cantripGap = spellcasting.cantripLimit - character.spells.cantrips.length;
-    if (cantripGap > 0) pending.push({ kind: "cantrips", message: `Choose ${cantripGap} more cantrip${cantripGap === 1 ? "" : "s"}.`, count: cantripGap });
-    const preparedGap = spellcasting.preparedLimit - character.spells.prepared.length;
-    if (preparedGap > 0) pending.push({ kind: "prepared", message: `Prepare ${preparedGap} more spell${preparedGap === 1 ? "" : "s"}.`, count: preparedGap });
-    if (character.spells.cantrips.length > spellcasting.cantripLimit) warnings.push(`You know ${character.spells.cantrips.length} cantrips; the limit is ${spellcasting.cantripLimit}.`);
-    if (character.spells.prepared.length > spellcasting.preparedLimit) warnings.push(`You have ${character.spells.prepared.length} spells prepared; the limit is ${spellcasting.preparedLimit}.`);
-    if (bodyArmor && !trainedFor(bodyArmor)) warnings.push("You can't cast spells while wearing armor you lack training with.");
-  }
+    const own = classSpellLists(character, caster.id);
+    const named = multipleCasters ? `${cls.name} ` : "";
+    const cantripGap = info.cantripLimit - own.cantrips.length;
+    if (cantripGap > 0) pending.push({ kind: "cantrips", message: `Choose ${cantripGap} more ${named}cantrip${cantripGap === 1 ? "" : "s"}.`, count: cantripGap, key: caster.id });
+    const preparedGap = info.preparedLimit - own.prepared.length;
+    if (preparedGap > 0) pending.push({ kind: "prepared", message: `Prepare ${preparedGap} more ${named}spell${preparedGap === 1 ? "" : "s"}.`, count: preparedGap, key: caster.id });
+    if (own.cantrips.length > info.cantripLimit) warnings.push(`You know ${own.cantrips.length} ${named}cantrips; the limit is ${info.cantripLimit}.`);
+    if (own.prepared.length > info.preparedLimit) warnings.push(`You have ${own.prepared.length} ${named}spells prepared; the limit is ${info.preparedLimit}.`);
+    return info;
+  });
+  const spellcasting = spellcastingClasses[0] ?? null;
+  if (spellcasting && bodyArmor && !trainedFor(bodyArmor)) warnings.push("You can't cast spells while wearing armor you lack training with.");
 
   // ----- homebrew attacks -----
   for (const h of homebrew.attacks) {
@@ -772,8 +812,10 @@ export function derive(character: Character, content: Content): DerivedSheet {
     hp: { max: maxHp, current: Math.min(state.hp, maxHp.value), temp: state.tempHp },
     hitDice,
     hitDiceAvailable: Math.max(0, level - state.hitDiceSpent),
+    hitDiceByDie: hitDiceByDie(hitDice, state),
     attacks,
     spellcasting,
+    spellcastingClasses,
     grantedSpells,
     resources,
     features,
@@ -798,4 +840,32 @@ function withMod(die: string, mod: number): string {
 
 function formatSigned(n: number): string {
   return n >= 0 ? `+${n}` : `${n}`;
+}
+
+/** The spells chosen for one spellcasting class: the first uses the top-level lists, later ones `byClass`. */
+export function classSpellLists(character: Character, classId: string): { cantrips: string[]; prepared: string[] } {
+  const first = character.build.classes.find((e) => SPELLCASTING_ABILITY[e.id]);
+  if (!first || first.id === classId) return { cantrips: character.spells.cantrips, prepared: character.spells.prepared };
+  return character.spells.byClass?.[classId] ?? { cantrips: [], prepared: [] };
+}
+
+function hitDiceByDie(hitDice: { die: number; total: number }[], state: Character["state"]): DerivedSheet["hitDiceByDie"] {
+  const groups: { die: number; total: number; available: number }[] = [];
+  for (const h of hitDice) {
+    const g = groups.find((x) => x.die === h.die);
+    if (g) g.total += h.total;
+    else groups.push({ die: h.die, total: h.total, available: 0 });
+  }
+  if (state.hitDiceSpentByDie) {
+    for (const g of groups) g.available = Math.max(0, g.total - (state.hitDiceSpentByDie[String(g.die)] ?? 0));
+  } else {
+    // Older characters only count the total; take it from the first kind of die.
+    let spent = state.hitDiceSpent;
+    for (const g of groups) {
+      const used = Math.min(g.total, spent);
+      g.available = g.total - used;
+      spent -= used;
+    }
+  }
+  return groups;
 }

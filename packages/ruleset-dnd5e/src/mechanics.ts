@@ -403,3 +403,78 @@ export const MYSTIC_ARCANUM: Record<number, number> = { 11: 6, 13: 7, 15: 8, 17:
 export function championCritRange(level: number): number {
   return level >= 15 ? 18 : level >= 3 ? 19 : 20;
 }
+
+// ---------- multiclassing ----------
+
+/** Multiclass Spellcaster table: spell slots by combined caster level (index 0 = level 1). */
+export const MULTICLASS_SLOTS: number[][] = [
+  [2],
+  [3],
+  [4, 2],
+  [4, 3],
+  [4, 3, 2],
+  [4, 3, 3],
+  [4, 3, 3, 1],
+  [4, 3, 3, 2],
+  [4, 3, 3, 3, 1],
+  [4, 3, 3, 3, 2],
+  [4, 3, 3, 3, 2, 1],
+  [4, 3, 3, 3, 2, 1],
+  [4, 3, 3, 3, 2, 1, 1],
+  [4, 3, 3, 3, 2, 1, 1],
+  [4, 3, 3, 3, 2, 1, 1, 1],
+  [4, 3, 3, 3, 2, 1, 1, 1],
+  [4, 3, 3, 3, 2, 1, 1, 1, 1],
+  [4, 3, 3, 3, 3, 1, 1, 1, 1],
+  [4, 3, 3, 3, 3, 2, 1, 1, 1],
+  [4, 3, 3, 3, 3, 2, 2, 1, 1],
+];
+
+const FULL_CASTERS = ["bard", "cleric", "druid", "sorcerer", "wizard"];
+const HALF_CASTERS = ["paladin", "ranger"];
+
+/** Classes with the Spellcasting feature (Warlock has Pact Magic instead). */
+export const hasSpellcastingFeature = (classId: string) => FULL_CASTERS.includes(classId) || HALF_CASTERS.includes(classId);
+
+/** Combined level for the Multiclass Spellcaster table: full casters count fully, Paladin and Ranger count half, rounded up. */
+export function multiclassCasterLevel(entries: { id: string; level: number }[]): number {
+  return entries.reduce((t, e) => t + (FULL_CASTERS.includes(e.id) ? e.level : HALF_CASTERS.includes(e.id) ? Math.ceil(e.level / 2) : 0), 0);
+}
+
+/** What a class grants when it is not your first class ("As a Multiclass Character"). */
+export interface MulticlassGains {
+  armor: { light?: boolean; medium?: boolean; shield?: boolean };
+  martial: boolean;
+  /** Skill picks: from the class list, or any skill (Bard). */
+  skills: { count: number; from: "class" | "any" };
+  tool: string | null;
+}
+export const MULTICLASS_GAINS: Record<string, MulticlassGains> = {
+  barbarian: { armor: { shield: true }, martial: true, skills: { count: 0, from: "class" }, tool: null },
+  bard: { armor: { light: true }, martial: false, skills: { count: 1, from: "any" }, tool: "One Musical Instrument of your choice (Bard)" },
+  cleric: { armor: { light: true, medium: true, shield: true }, martial: false, skills: { count: 0, from: "class" }, tool: null },
+  druid: { armor: { light: true, shield: true }, martial: false, skills: { count: 0, from: "class" }, tool: null },
+  fighter: { armor: { light: true, medium: true, shield: true }, martial: true, skills: { count: 0, from: "class" }, tool: null },
+  monk: { armor: {}, martial: false, skills: { count: 0, from: "class" }, tool: null },
+  paladin: { armor: { light: true, medium: true, shield: true }, martial: true, skills: { count: 0, from: "class" }, tool: null },
+  ranger: { armor: { light: true, medium: true, shield: true }, martial: true, skills: { count: 1, from: "class" }, tool: null },
+  rogue: { armor: { light: true }, martial: false, skills: { count: 1, from: "class" }, tool: "Thieves' Tools (Rogue)" },
+  sorcerer: { armor: {}, martial: false, skills: { count: 0, from: "class" }, tool: null },
+  warlock: { armor: { light: true }, martial: false, skills: { count: 0, from: "class" }, tool: null },
+  wizard: { armor: {}, martial: false, skills: { count: 0, from: "class" }, tool: null },
+};
+
+const ABILITY_BY_NAME: Record<string, Ability> = { strength: "str", dexterity: "dex", constitution: "con", intelligence: "int", wisdom: "wis", charisma: "cha" };
+
+/** Reads a class's primary ability from the pack: "Strength or Dexterity" needs either, "Dexterity and Wisdom" needs both. */
+export function primaryAbilities(text: string): { abilities: Ability[]; all: boolean } {
+  const abilities = text
+    .toLowerCase()
+    .split(/\s+(?:or|and)\s+|,\s*/)
+    .map((w) => ABILITY_BY_NAME[w.trim()])
+    .filter((a): a is Ability => Boolean(a));
+  return { abilities, all: /\band\b/i.test(text) };
+}
+
+/** Multiclassing needs 13 in the primary ability of the new class and of every current class. */
+export const MULTICLASS_MINIMUM = 13;

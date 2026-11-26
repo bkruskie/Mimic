@@ -40,7 +40,7 @@ Starting here makes sense for the architecture too. The sheet needs the rules en
 | Play tracking | HP, temporary HP, death saves, hit dice, short and long rests, spell slots, limited-use features, conditions, exhaustion | Effects pushed by the DM |
 | Spells | Prepared and known spells, slots, concentration, spell details | Spell cards on the table display |
 | Inventory | Equipment, attunement, currency, weight, containers | Trading items with other players |
-| Levelling | Level up to 20 with guided choices, including Eldritch Invocations, Metamagic, Mystic Arcanum and Epic Boons | Multiclassing (Phase 2) |
+| Levelling | Level up to 20 with guided choices, including Eldritch Invocations, Metamagic, Mystic Arcanum and Epic Boons; multiclassing with its prerequisites, proficiencies and shared spell slots | Custom level-up rules |
 | Homebrew | Your own features (with limited uses), attacks and bonuses to any number, optionally tied to an equipped item | Homebrew species, classes and subclasses (Phase 2) |
 | Storage | Many characters in a local vault; export and import as `.mimicbox-character` files | Linking a second device; joining a game with a character |
 
@@ -500,7 +500,7 @@ Gate: a player builds a level 1 character on a phone in airplane mode, plays a r
 
 ### Phases 2 to 8
 
-- **Phase 2, character sheet depth**: homebrew features, attacks and bonuses (done) and homebrew subclasses; levels 6 to 20 (done) and multiclassing; the Pathfinder 2e ruleset and sheet; desktop and tablet layouts; linking a second device. Gate: one app holds a 5e and a PF2e character, both matching reference sheets.
+- **Phase 2, character sheet depth**: homebrew features, attacks and bonuses (done) and homebrew subclasses; levels 6 to 20 and multiclassing (done); the Pathfinder 2e ruleset and sheet; desktop and tablet layouts; linking a second device. Gate: one app holds a 5e and a PF2e character, both matching reference sheets.
 - **Phase 3, connect to the table**: the kit's first vertical slice, with real characters. The DM desktop app hosts; players join by link or QR code from their sheet; the DM sees the party's sheets and shared rolls; a test token syncs; a separate display window shows only player-safe state; reconnects never repeat an action. Gate: the kit's definition of done, met on genuinely separate networks with no Mimic Box server.
 - **Phase 4, campaign and world**: campaign library, asset import, the world wiki with per-block visibility, journals and handouts, LAN fallback, backups and restore. Gate: a DM preps a world fully offline, and a backup restores on another computer.
 - **Phase 5, tabletop MVP**: maps, square, hex and gridless grids, layers, tokens with control rules, walls and doors, tiled fog reveal, measuring. Gate: players see only permitted content and move only their tokens; the phone benchmark passes.

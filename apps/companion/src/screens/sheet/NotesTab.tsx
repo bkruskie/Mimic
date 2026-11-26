@@ -1,4 +1,4 @@
-import { classOptionRule, derive, exportCharacter, findClass, levelUp, type Character } from "@mimicbox/ruleset-dnd5e";
+import { MULTICLASS_GAINS, classOptionRule, derive, exportCharacter, findClass, levelUp, multiclassBlocker, type Character } from "@mimicbox/ruleset-dnd5e";
 import { useState } from "react";
 import { go } from "../../App";
 import { ClassOptionsEditor, PendingChoices } from "../../components/editors";
@@ -19,12 +19,14 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
   const { vault, refresh, toast } = useApp();
   const [levelling, setLevelling] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [editingOptions, setEditingOptions] = useState(false);
+  const [editingOptions, setEditingOptions] = useState<number | null>(null);
   const [featureForm, setFeatureForm] = useState<{ id: string | null } | null>(null);
   const [bonusForm, setBonusForm] = useState<{ id: string | null } | null>(null);
   const hb = character.homebrew ?? { features: [], attacks: [], bonuses: [] };
   const entry = character.build.classes[0]!;
-  const optionRule = classOptionRule(entry.id, entry.level, findClass(content, entry.id).progression[entry.level - 1]?.columns ?? {});
+  const optionClasses = character.build.classes
+    .map((e, i) => ({ i, rule: classOptionRule(e.id, e.level, findClass(content, e.id).progression[e.level - 1]?.columns ?? {}) }))
+    .filter((x): x is { i: number; rule: NonNullable<typeof x.rule> } => Boolean(x.rule && x.rule.count > 0));
 
   function download() {
     const file = exportCharacter(character, content);
@@ -67,19 +69,19 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
       <section className="section">
         <div className="spread">
           <h2>Level {sheet.level}</h2>
-          <button className="btn btn-primary" disabled={entry.level >= 20} onClick={() => setLevelling(true)}>
+          <button className="btn btn-primary" disabled={sheet.level >= 20} onClick={() => setLevelling(true)}>
             Level up
           </button>
         </div>
-        {optionRule && optionRule.count > 0 && (
-          <button className="btn" style={{ marginTop: 10 }} onClick={() => setEditingOptions(true)}>
-            Change {optionRule.label}
+        {optionClasses.map((x) => (
+          <button key={x.i} className="btn" style={{ marginTop: 10, marginRight: 8 }} onClick={() => setEditingOptions(x.i)}>
+            Change {x.rule.label}
           </button>
-        )}
+        ))}
       </section>
-      {editingOptions && optionRule && (
-        <Drawer title={optionRule.label} onClose={() => setEditingOptions(false)}>
-          <ClassOptionsEditor character={character} sheet={sheet} update={update} />
+      {editingOptions !== null && (
+        <Drawer title={optionClasses.find((x) => x.i === editingOptions)?.rule.label ?? "Options"} onClose={() => setEditingOptions(null)}>
+          <ClassOptionsEditor character={character} sheet={sheet} update={update} index={editingOptions} />
         </Drawer>
       )}
 
@@ -228,8 +230,8 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
         <LevelUpDrawer
           character={character}
           onClose={() => setLevelling(false)}
-          onConfirm={(roll) => {
-            const next = levelUp(character, content, { classId: entry.id, hitPointRoll: roll });
+          onConfirm={(chosen, roll) => {
+            const next = levelUp(character, content, { classId: chosen, hitPointRoll: roll });
             const open = derive(next, content).pending.length;
             update(next);
             setLevelling(false);
@@ -257,19 +259,55 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
   );
 }
 
-function LevelUpDrawer({ character, onClose, onConfirm }: { character: Character; onClose: () => void; onConfirm: (roll: number | null) => void }) {
-  const entry = character.build.classes[0]!;
-  const cls = findClass(content, entry.id);
-  const next = entry.level + 1;
+function LevelUpDrawer({ character, onClose, onConfirm }: { character: Character; onClose: () => void; onConfirm: (classId: string, roll: number | null) => void }) {
+  const total = character.build.classes.reduce((t, e) => t + e.level, 0);
+  const [classId, setClassId] = useState(character.build.classes[0]!.id);
+  const [adding, setAdding] = useState(false);
+  const entry = character.build.classes.find((e) => e.id === classId);
+  const cls = findClass(content, classId);
+  const next = (entry?.level ?? 0) + 1;
   const row = cls.progression[next - 1]!;
   const [mode, setMode] = useState<"average" | "roll">("average");
   const [rolled, setRolled] = useState("");
   const rollValue = Math.floor(Number(rolled));
   const valid = mode === "average" || (rollValue >= 1 && rollValue <= cls.hitDie);
+  const others = content.classes.filter((c) => !character.build.classes.some((e) => e.id === c.id));
   return (
-    <Drawer title={`${cls.name} level ${next}`} onClose={onClose}>
-      <p>
-        New at level {next}: {row.features.length ? row.features.join(", ") : "no new class features"}.
+    <Drawer title={`Level ${total + 1}`} onClose={onClose}>
+      <h3>Class</h3>
+      <div className="row" role="group" aria-label="Class to level" style={{ marginTop: 8 }}>
+        {character.build.classes.map((e) => (
+          <button
+            key={e.id}
+            className="chip"
+            aria-pressed={classId === e.id}
+            onClick={() => {
+              setClassId(e.id);
+              setAdding(false);
+            }}
+          >
+            {findClass(content, e.id).name} {e.level + 1}
+          </button>
+        ))}
+        <button className="chip" aria-pressed={adding} onClick={() => setAdding(true)}>
+          Add a class
+        </button>
+      </div>
+      {adding && (
+        <div className="choice-grid" style={{ marginTop: 10 }} role="group" aria-label="New class">
+          {others.map((c) => {
+            const blocker = multiclassBlocker(character, content, c.id);
+            return (
+              <button key={c.id} type="button" className="choice" aria-pressed={classId === c.id} disabled={Boolean(blocker)} onClick={() => setClassId(c.id)}>
+                <strong>{c.name}</strong>
+                <small>{blocker ?? `d${c.hitDie} Hit Point Die. ${multiclassGainsText(c.id)}`}</small>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <p style={{ marginTop: 12 }}>
+        {cls.name} level {next}: {row.features.length ? row.features.join(", ") : "no new class features"}.
       </p>
       <h3>Hit points</h3>
       <div className="row" style={{ marginTop: 8 }}>
@@ -289,10 +327,24 @@ function LevelUpDrawer({ character, onClose, onConfirm }: { character: Character
       <p className="muted small" style={{ marginTop: 10 }}>
         Your Constitution modifier is added automatically. New choices, such as a subclass or an Ability Score Improvement, appear under To do.
       </p>
-      <p className="muted small">Multiclassing arrives in a later release.</p>
-      <button className="btn btn-primary" disabled={!valid} onClick={() => onConfirm(mode === "roll" ? rollValue : null)}>
-        Reach level {next}
+      <button className="btn btn-primary" disabled={!valid || (adding && !others.some((c) => c.id === classId))} onClick={() => onConfirm(classId, mode === "roll" ? rollValue : null)}>
+        Reach level {total + 1}
       </button>
     </Drawer>
   );
+}
+
+/** What a class gives as a second class, in a few words. */
+function multiclassGainsText(classId: string): string {
+  const g = MULTICLASS_GAINS[classId];
+  if (!g) return "";
+  const armor = [g.armor.light && "Light", g.armor.medium && "Medium"].filter(Boolean).join(" and ");
+  const parts = [
+    armor && `${armor} armor`,
+    g.armor.shield && "Shields",
+    g.martial && "Martial weapons",
+    g.skills.count && `${g.skills.count} skill`,
+    g.tool,
+  ].filter(Boolean);
+  return parts.length ? `Gain ${parts.join(", ")}.` : "No new proficiencies.";
 }

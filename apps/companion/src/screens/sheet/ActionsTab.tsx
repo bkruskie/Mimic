@@ -141,7 +141,7 @@ export function ActionsTab({ character, sheet, update, ask }: SheetProps) {
       <section className="section">
         <h2>Rest</h2>
         <p className="muted small" style={{ marginTop: -4 }}>
-          Hit Point Dice: {sheet.hitDiceAvailable} of {sheet.level} left ({sheet.hitDice.map((h) => `d${h.die}`).join(", ")}).
+          Hit Point Dice: {sheet.hitDiceByDie.map((g) => `${g.available} of ${g.total} d${g.die}`).join(", ")} left.
         </p>
         <div className="row">
           <button className="btn" onClick={() => setRest("short")}>
@@ -175,23 +175,26 @@ export function ActionsTab({ character, sheet, update, ask }: SheetProps) {
 }
 
 function ShortRestDrawer({ sheet, update, onClose }: SheetProps & { onClose: () => void }) {
-  const [rolls, setRolls] = useState<number[]>([]);
-  const die = sheet.hitDice[0]?.die ?? 8;
+  const [rolls, setRolls] = useState<{ die: number; roll: number }[]>([]);
   const con = sheet.abilities.con.mod;
-  const left = sheet.hitDiceAvailable - rolls.length;
-  const healed = rolls.reduce((t, r) => t + Math.max(0, r + con), 0);
+  const healed = rolls.reduce((t, r) => t + Math.max(0, r.roll + con), 0);
   return (
     <Drawer title="Short Rest" onClose={onClose}>
       <p>Spend Hit Point Dice to heal. Each die heals its roll plus your Constitution modifier ({formatModifier(con)}).</p>
-      <div className="row">
-        <button className="btn" disabled={left <= 0} onClick={() => setRolls((r) => [...r, roll(`1d${die}`).total])}>
-          Roll a d{die}
-        </button>
-        <span className="muted small">{left} left</span>
-      </div>
+      {sheet.hitDiceByDie.map((g) => {
+        const left = g.available - rolls.filter((r) => r.die === g.die).length;
+        return (
+          <div className="row" key={g.die} style={{ marginBottom: 6 }}>
+            <button className="btn" disabled={left <= 0} onClick={() => setRolls((r) => [...r, { die: g.die, roll: roll(`1d${g.die}`).total }])}>
+              Roll a d{g.die}
+            </button>
+            <span className="muted small">{left} left</span>
+          </div>
+        );
+      })}
       {rolls.length > 0 && (
         <p style={{ marginTop: 10 }}>
-          Rolled {rolls.join(", ")}: heal <strong>{healed}</strong>.
+          Rolled {rolls.map((r) => r.roll).join(", ")}: heal <strong>{healed}</strong>.
         </p>
       )}
       <button
