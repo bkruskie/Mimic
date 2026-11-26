@@ -5,6 +5,7 @@
 import { CharacterImportError, importCharacter, type Character, type Content } from "@mimicbox/ruleset-dnd5e";
 import { HANDOUT_MAX_LENGTH, type Handout, type HostCampaign, type Member } from "./host.js";
 import type { MapScene, Token } from "./map.js";
+import { QUEST_STATUSES, WORLD_KINDS, WORLD_TEXT_MAX, type WorldEntry } from "./world.js";
 import type { SharedRoll } from "./protocol.js";
 
 export const CAMPAIGN_FORMAT = "mimicbox-campaign";
@@ -104,6 +105,22 @@ export function importCampaign(
       tiles[m.id] = Object.fromEntries(Object.entries(t).filter(([k, v]) => /^\d+:\d+$/.test(k) && typeof v === "string" && /^data:image\/(jpeg|webp|png);base64,/.test(v))) as Record<string, string>;
     }
   }
+  const world: WorldEntry[] = (Array.isArray(c.world) ? c.world : [])
+    .filter((e): e is Record<string, unknown> => isRecord(e) && typeof e.id === "string" && typeof e.title === "string" && (WORLD_KINDS as readonly unknown[]).includes(e.kind))
+    .map((e) => ({
+      id: e.id as string,
+      kind: e.kind as WorldEntry["kind"],
+      title: (e.title as string).slice(0, 120),
+      parentId: typeof e.parentId === "string" ? e.parentId : null,
+      revealed: e.revealed === true,
+      blocks: (Array.isArray(e.blocks) ? e.blocks : [])
+        .filter((b): b is Record<string, unknown> => isRecord(b) && typeof b.id === "string" && typeof b.text === "string")
+        .map((b) => ({ id: b.id as string, text: (b.text as string).slice(0, WORLD_TEXT_MAX), revealed: b.revealed === true })),
+      questStatus: e.kind === "quest" && (QUEST_STATUSES as readonly unknown[]).includes(e.questStatus) ? (e.questStatus as WorldEntry["questStatus"]) : e.kind === "quest" ? "active" : null,
+      updatedAt: typeof e.updatedAt === "string" ? e.updatedAt : new Date().toISOString(),
+    }));
+  const ids = new Set(world.map((e) => e.id));
+  for (const e of world) if (e.parentId && !ids.has(e.parentId)) e.parentId = null;
   const now = new Date().toISOString();
   return {
     tiles,
@@ -116,6 +133,7 @@ export function importCampaign(
       rolls,
       handouts,
       maps,
+      world,
       activeMapId: maps.some((m) => m.id === c.activeMapId) ? (c.activeMapId as string) : null,
       seen: {},
       createdAt: typeof c.createdAt === "string" ? c.createdAt : now,

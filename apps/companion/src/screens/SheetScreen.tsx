@@ -54,7 +54,7 @@ export function SheetScreen({ id }: { id: string }) {
   const roller = useRoller(id);
   const [tab, setTab] = useState<Tab>(() => (sessionStorage.getItem(`tab:${id}`) as Tab | null) ?? "actions");
   const [lastAsk, setLastAsk] = useState<RollAsk | null>(null);
-  const [drawer, setDrawer] = useState<"hp" | "conditions" | "dice" | "history" | "party" | "map" | null>(null);
+  const [drawer, setDrawer] = useState<"hp" | "conditions" | "dice" | "history" | "party" | "map" | "journal" | null>(null);
   const [mapTool, setMapTool] = useState<"view" | "measure">("view");
   const cols = useColumns();
   const table = useTable();
@@ -164,6 +164,11 @@ export function SheetScreen({ id }: { id: string }) {
               </button>
             )}
             {character.state.heroicInspiration && <span className="chip" aria-pressed="true">Heroic Inspiration</span>}
+            {atTable && table.world.length > 0 && (
+              <button className="chip" onClick={() => setDrawer("journal")}>
+                Journal
+              </button>
+            )}
             {atTable && table.map && (
               <button className="chip" onClick={() => setDrawer("map")}>
                 Map
@@ -265,6 +270,7 @@ export function SheetScreen({ id }: { id: string }) {
       )}
       {drawer === "hp" && <HpDrawer {...props} onClose={() => setDrawer(null)} />}
       {drawer === "party" && <PartyDrawer onClose={() => setDrawer(null)} />}
+      {drawer === "journal" && <JournalDrawer onClose={() => setDrawer(null)} />}
       {drawer === "map" && table.map && (
         <Drawer title={table.map.name} onClose={() => setDrawer(null)}>
           <div className="row" role="group" aria-label="Map tool" style={{ marginBottom: 8 }}>
@@ -677,5 +683,45 @@ function CombatBanner({ sheet, onRollInitiative, onOpen }: { sheet: DerivedSheet
     <button className={yourTurn ? "notice combat-banner your-turn" : "notice combat-banner"} style={{ width: "100%", textAlign: "left", border: 0 }} onClick={onOpen} role="status">
       {yourTurn ? `Your turn. Round ${combat.round}.` : `Round ${combat.round}. ${combat.order.find((c) => c.id === combat.turnId)?.name ?? "Waiting for the next turn"}${combat.order.some((c) => c.id === combat.turnId) ? " is acting." : "."}`}
     </button>
+  );
+}
+
+const JOURNAL_GROUPS = [
+  ["quest", "Quests"],
+  ["place", "Places"],
+  ["person", "People"],
+  ["faction", "Factions"],
+  ["lore", "Lore"],
+] as const;
+
+/** What the party has learned of the DM's world. */
+function JournalDrawer({ onClose }: { onClose: () => void }) {
+  const table = useTable();
+  const byId = new Map(table.world.map((e) => [e.id, e]));
+  return (
+    <Drawer title="Journal" onClose={onClose}>
+      <p className="muted small" style={{ marginTop: 0 }}>
+        What your DM has shared about the world of {table.invite?.campaign ?? "this game"}.
+      </p>
+      {JOURNAL_GROUPS.map(([kind, heading]) => {
+        const entries = table.world.filter((e) => e.kind === kind);
+        if (!entries.length) return null;
+        return (
+          <section key={kind} aria-label={heading}>
+            <h3 style={{ marginTop: 14 }}>{heading}</h3>
+            {entries.map((e) => (
+              <details key={e.id} className="feature">
+                <summary>
+                  <span className="grow">{e.title}</span>
+                  {e.questStatus && e.questStatus !== "active" && <span className="small muted">{e.questStatus === "done" ? "Done" : "Failed"}</span>}
+                </summary>
+                {e.parentId && byId.get(e.parentId) && <p className="muted small">In {byId.get(e.parentId)!.title}</p>}
+                {e.paragraphs.length ? e.paragraphs.map((p, i) => <Markdown key={i} text={p} />) : <p className="muted small">Nothing more is known yet.</p>}
+              </details>
+            ))}
+          </section>
+        );
+      })}
+    </Drawer>
   );
 }

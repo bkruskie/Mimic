@@ -357,6 +357,39 @@ try {
   await dm.page.getByRole("group", { name: "Wren Ashdown's conditions" }).getByRole("button", { name: "Prone" }).click();
   await eventually(async () => !/Prone/.test(await alice.page.locator(".sheet-top").innerText()), "and clearing it removes it");
 
+  // ----- World notes: entries and paragraphs revealed separately -----
+  const world = dm.page.getByRole("region", { name: "World" });
+  const entry = dm.page.getByRole("form", { name: "World entry" });
+  await world.getByRole("button", { name: "New place" }).click();
+  await entry.getByLabel("Place name").fill("Port Ashen");
+  await entry.getByLabel("Paragraph 1").fill("A rain-soaked harbour town.");
+  await entry.getByRole("button", { name: "Only you" }).click();
+  await entry.getByRole("checkbox", { name: "Players know about this place" }).check();
+  await entry.getByRole("button", { name: "Save place" }).click();
+  await world.getByRole("button", { name: "New place" }).click();
+  await entry.getByLabel("Place name").fill("The Drowned Vault");
+  await entry.getByLabel("Paragraph 1").fill("Under the lighthouse.");
+  await entry.getByRole("button", { name: "Save place" }).click();
+  await world.getByRole("button", { name: "New person" }).click();
+  await entry.getByLabel("Person name").fill("Mara the ferrywoman");
+  await entry.getByLabel("Inside").selectOption({ label: "Port Ashen" });
+  await entry.getByLabel("Paragraph 1").fill("Grey cloak, kind eyes.");
+  await entry.getByRole("button", { name: "Only you" }).click();
+  await entry.getByRole("button", { name: "Add a paragraph" }).click();
+  await entry.getByLabel("Paragraph 2").fill("Secretly serves the drowned god.");
+  await entry.getByRole("checkbox", { name: "Players know about this person" }).check();
+  await shot(dm.page, "dm-world");
+  await entry.getByRole("button", { name: "Save person" }).click();
+  await eventually(async () => (await alice.page.getByRole("button", { name: "Journal" }).count()) > 0, "Alice's sheet gets a journal");
+  await alice.page.getByRole("button", { name: "Journal" }).click();
+  const journal = alice.page.getByRole("dialog");
+  await journal.getByText("Mara the ferrywoman").click();
+  const read = await journal.innerText();
+  check(/Port Ashen/.test(read) && /In Port Ashen/.test(read) && /Grey cloak, kind eyes/.test(read), "Alice reads Port Ashen and Mara's public description");
+  check(!/drowned god/i.test(read) && !/Drowned Vault/.test(read) && !/lighthouse/.test(read), "but not Mara's secret or the hidden place");
+  await shot(alice.page, "alice-journal");
+  await alice.page.keyboard.press("Escape");
+
   // ----- Replacing the link keeps out anyone holding the old one -----
   await dm.page.getByRole("button", { name: "Replace link" }).click();
   await eventually(async () => (await dm.page.getByRole("textbox", { name: "Invite link" }).inputValue()) !== invite, "the DM replaces the invite link");

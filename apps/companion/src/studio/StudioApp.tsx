@@ -40,6 +40,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BackIcon } from "../lib/icons";
 import { deleteCampaign, getCampaign, listCampaigns, loadTiles, relaysFromAddress, saveCampaign, saveTiles, type StudioCampaign } from "./store";
 import { MapsPanel } from "./MapsPanel";
+import { WorldPanel } from "./WorldPanel";
 import { useHost } from "./useHost";
 
 const route = () => /^#\/c\/([\w-]+)$/.exec(location.hash)?.[1] ?? null;
@@ -256,6 +257,7 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
               onReveal={(id, revealed) => update((c) => ({ ...c, ...setHandoutRevealed(c, id, revealed) }))}
               onRemove={(id) => update((c) => ({ ...c, ...removeHandout(c, id) }))}
             />
+            <WorldPanel campaign={campaign} update={update} />
           </div>
           <div className="sheet-col">
             <section className="section panel">

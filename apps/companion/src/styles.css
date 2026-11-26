@@ -1412,3 +1412,4 @@ details.feature[open] {
     0 0 18px 4px rgba(201, 151, 63, 0.7);
   z-index: 1;
 }
+.world-block { padding: 10px 12px; border-radius: var(--r-md); background: var(--hollow); }
