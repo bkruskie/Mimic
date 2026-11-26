@@ -3,7 +3,24 @@
  */
 import { DiceSyntaxError, describeRoll, formatModifier, parseDice, roll as rollDice } from "@mimicbox/dice";
 import { ABILITIES, ABILITY_NAMES, SKILLS, SKILL_IDS, derive, newId, srdContent as content } from "@mimicbox/ruleset-dnd5e";
-import { CampaignImportError, addDmRoll, createCampaign, exportCampaign, importCampaign, randomSecret, removeMember, replaceInvite, type Member, type SharedRoll } from "@mimicbox/table";
+import {
+  CampaignImportError,
+  HANDOUT_MAX_LENGTH,
+  addDmRoll,
+  createCampaign,
+  exportCampaign,
+  importCampaign,
+  randomSecret,
+  removeHandout,
+  removeMember,
+  replaceInvite,
+  saveHandout,
+  setHandoutRevealed,
+  type Handout,
+  type Member,
+  type SharedRoll,
+} from "@mimicbox/table";
+import { Markdown } from "../lib/markdown";
 import { downloadJson, fileSafe } from "../lib/download";
 import qrcode from "qrcode-generator";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -193,6 +210,12 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
                 />
               ))}
             </section>
+            <Handouts
+              handouts={campaign.handouts ?? []}
+              onSave={(h) => update((c) => ({ ...c, ...saveHandout(c, h) }))}
+              onReveal={(id, revealed) => update((c) => ({ ...c, ...setHandoutRevealed(c, id, revealed) }))}
+              onRemove={(id) => update((c) => ({ ...c, ...removeHandout(c, id) }))}
+            />
           </div>
           <div className="sheet-col">
             <section className="section panel">
@@ -429,6 +452,100 @@ function RollLog({ rolls }: { rolls: SharedRoll[] }) {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+function Handouts({
+  handouts,
+  onSave,
+  onReveal,
+  onRemove,
+}: {
+  handouts: Handout[];
+  onSave: (h: Pick<Handout, "id" | "title" | "body">) => void;
+  onReveal: (id: string, revealed: boolean) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [editing, setEditing] = useState<{ id: string; title: string; body: string } | null>(null);
+  const [confirm, setConfirm] = useState<string | null>(null);
+  return (
+    <section className="section">
+      <h2>Handouts</h2>
+      <p className="muted small" style={{ marginTop: 4 }}>
+        Letters, clues and notes. Each one stays on this device until you show it; then the party and the table display get it.
+      </p>
+      {handouts.map((h) =>
+        editing?.id === h.id ? null : (
+          <article key={h.id} className="panel handout-card" aria-label={h.title}>
+            <div className="spread">
+              <strong className="member-name">{h.title}</strong>
+              <span className={h.revealed ? "presence here" : "presence"}>{h.revealed ? "Shown to the party" : "Only you"}</span>
+            </div>
+            <details className="small" style={{ marginTop: 6 }}>
+              <summary style={{ cursor: "pointer" }}>Read</summary>
+              <Markdown text={h.body} />
+            </details>
+            <div className="row" style={{ marginTop: 8 }}>
+              <button className={h.revealed ? "btn" : "btn btn-primary"} onClick={() => onReveal(h.id, !h.revealed)}>
+                {h.revealed ? "Hide again" : "Show to the party"}
+              </button>
+              <button className="btn btn-quiet" onClick={() => setEditing({ id: h.id, title: h.title, body: h.body })}>
+                Edit
+              </button>
+              {confirm === h.id ? (
+                <button className="btn btn-danger" onClick={() => onRemove(h.id)}>
+                  Delete {h.title}
+                </button>
+              ) : (
+                <button className="btn btn-quiet" onClick={() => setConfirm(h.id)}>
+                  Delete
+                </button>
+              )}
+            </div>
+          </article>
+        ),
+      )}
+      {editing ? (
+        <form
+          className="panel stack handout-card"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!editing.title.trim()) return;
+            onSave({ id: editing.id, title: editing.title.trim(), body: editing.body });
+            setEditing(null);
+          }}
+        >
+          <label className="field">
+            <span>Title</span>
+            <input className="input" value={editing.title} onChange={(e) => setEditing({ ...editing, title: e.target.value })} maxLength={120} placeholder="The ferryman's letter" />
+          </label>
+          <label className="field">
+            <span>Text</span>
+            <textarea
+              className="input"
+              style={{ minHeight: 160 }}
+              value={editing.body}
+              maxLength={HANDOUT_MAX_LENGTH}
+              onChange={(e) => setEditing({ ...editing, body: e.target.value })}
+              placeholder="Use **bold** and *italic*. A blank line starts a new paragraph."
+            />
+          </label>
+          <div className="row">
+            <button className="btn btn-primary" disabled={!editing.title.trim()}>
+              Save handout
+            </button>
+            <button type="button" className="btn" onClick={() => setEditing(null)}>
+              Cancel
+            </button>
+          </div>
+          <p className="muted small">Saving doesn't show it to anyone. Use Show to the party when you're ready.</p>
+        </form>
+      ) : (
+        <button className="btn" style={{ marginTop: 10 }} onClick={() => setEditing({ id: newId(), title: "", body: "" })}>
+          Write a handout
+        </button>
+      )}
     </section>
   );
 }

@@ -5,6 +5,7 @@ import { go } from "../App";
 import { BackIcon, BagIcon, CloseIcon, D20Icon, ScrollIcon, SparkIcon, StarIcon, SwordIcon } from "../lib/icons";
 import { content, useCharacter, useRoller, type ShownRoll } from "../lib/state";
 import { useTable } from "../lib/table";
+import { Markdown } from "../lib/markdown";
 import { AbilitiesTab } from "./sheet/AbilitiesTab";
 import { ActionsTab } from "./sheet/ActionsTab";
 import { GearTab } from "./sheet/GearTab";
@@ -568,6 +569,19 @@ function PartyDrawer({ onClose }: { onClose: () => void }) {
           </li>
         ))}
       </ul>
+      {table.handouts.length > 0 && (
+        <>
+          <h3 style={{ marginTop: 16 }}>Handouts</h3>
+          {[...table.handouts].reverse().map((h) => (
+            <details key={h.id} className="feature" aria-label={h.title}>
+              <summary>
+                <span className="grow">{h.title}</span>
+              </summary>
+              <Markdown text={h.body} />
+            </details>
+          ))}
+        </>
+      )}
       <h3 style={{ marginTop: 16 }}>Table rolls</h3>
       {table.rolls.length === 0 && <p className="muted">No rolls shared yet.</p>}
       <ul className="history" aria-label="Table rolls">

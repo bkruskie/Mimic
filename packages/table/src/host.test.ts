@@ -135,3 +135,25 @@ describe("invite links", () => {
     expect(decodeInvite(encodeInvite({ ...invite, relays: ["javascript:alert(1)"] })).relays).toBeUndefined();
   });
 });
+
+describe("handouts", () => {
+  it("stay on the DM's device until revealed, and leave every view when hidden again", async () => {
+    const { saveHandout, setHandoutRevealed } = await import("./index.js");
+    let c = joined();
+    c = saveHandout(c, { id: "h1", title: "The ferryman's letter", body: "Meet me at the **Sunken Bell**." });
+    c = saveHandout(c, { id: "h2", title: "Villain's plan", body: "Flood the lower city." });
+    const hidden = JSON.stringify([playerView(c, new Set(["alice"]), content), displayView(c, new Set(), content)]);
+    expect(hidden).not.toContain("ferryman");
+    expect(hidden).not.toContain("Flood the lower city");
+
+    c = setHandoutRevealed(c, "h1", true);
+    const [, , handouts] = playerView(c, new Set(["alice"]), content);
+    expect(handouts).toMatchObject({ t: "handouts", handouts: [{ id: "h1", title: "The ferryman's letter" }] });
+    expect(displayView(c, new Set(), content).spotlight?.title).toBe("The ferryman's letter");
+    expect(JSON.stringify(playerView(c, new Set(["alice"]), content))).not.toContain("Flood the lower city");
+
+    c = setHandoutRevealed(c, "h1", false);
+    expect(JSON.stringify(playerView(c, new Set(["alice"]), content))).not.toContain("ferryman");
+    expect(displayView(c, new Set(), content).spotlight).toBeNull();
+  });
+});

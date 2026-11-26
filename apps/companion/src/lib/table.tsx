@@ -12,6 +12,7 @@ import {
   type Invite,
   type PartyMember,
   type PlayerMessage,
+  type PublicHandout,
   type SharedRoll,
   type TableLink,
 } from "@mimicbox/table";
@@ -35,6 +36,8 @@ interface TableState {
   problem: string | null;
   party: PartyMember[];
   rolls: SharedRoll[];
+  /** Handouts the DM has shown to the party. */
+  handouts: PublicHandout[];
   join: (seat: Seat) => Promise<void>;
   leave: () => Promise<void>;
   shareCharacter: (c: Character) => void;
@@ -47,7 +50,10 @@ const SEAT_SETTING = "tableSeat";
 type Command = Extract<PlayerMessage, { commandId: string }>;
 
 export function TableProvider({ children }: { children: ReactNode }) {
-  const { vault } = useApp();
+  const { vault, toast } = useApp();
+  const [handouts, setHandouts] = useState<PublicHandout[]>([]);
+  // Handouts already seen on this connection, so only new reveals are announced.
+  const knownHandouts = useRef<Set<string> | null>(null);
   const [seat, setSeat] = useState<Seat | null>(null);
   const [status, setStatus] = useState<TableStatus>("idle");
   const [problem, setProblem] = useState<string | null>(null);
@@ -92,6 +98,7 @@ export function TableProvider({ children }: { children: ReactNode }) {
     if (!seat || !invite || !vault) return;
     let cancelled = false;
     welcomed.current = false;
+    knownHandouts.current = null;
     setStatus("connecting");
     setProblem(null);
     const hello = () => link.current?.send({ t: "hello", v: PROTOCOL_VERSION, invite: invite.key, playerName: seat.playerName }, invite.host);
@@ -133,6 +140,12 @@ export function TableProvider({ children }: { children: ReactNode }) {
           setProblem(m.reason);
         } else if (m.t === "party") setParty(m.members);
         else if (m.t === "rolls") setRolls(m.rolls);
+        else if (m.t === "handouts") {
+          const fresh = m.handouts.filter((h) => knownHandouts.current && !knownHandouts.current.has(h.id));
+          knownHandouts.current = new Set(m.handouts.map((h) => h.id));
+          setHandouts(m.handouts);
+          if (fresh.length) toast(fresh.length === 1 ? `New handout: ${fresh[0]!.title}` : `${fresh.length} new handouts`);
+        }
         else if (m.t === "ack") outbox.current = outbox.current.filter((c) => c.commandId !== m.commandId);
       });
       if (l.connected().includes(invite.host)) hello();
@@ -144,13 +157,14 @@ export function TableProvider({ children }: { children: ReactNode }) {
       link.current = null;
       void l?.leave();
     };
-  }, [seat, invite, vault, flushOutbox]);
+  }, [seat, invite, vault, flushOutbox, toast]);
 
   const join = useCallback(
     async (next: Seat) => {
       outbox.current = [];
       setParty([]);
       setRolls([]);
+      setHandouts([]);
       await vault?.setSetting(SEAT_SETTING, next);
       setSeat(next);
     },
@@ -164,6 +178,7 @@ export function TableProvider({ children }: { children: ReactNode }) {
     setStatus("idle");
     setParty([]);
     setRolls([]);
+    setHandouts([]);
   }, [vault]);
 
   const shareCharacter = useCallback(
@@ -176,8 +191,8 @@ export function TableProvider({ children }: { children: ReactNode }) {
   const shareRoll = useCallback((roll: Extract<PlayerMessage, { t: "roll" }>["roll"]) => enqueue({ t: "roll", v: PROTOCOL_VERSION, commandId: newId(), roll }), [enqueue]);
 
   const value = useMemo<TableState>(
-    () => ({ seat, invite, status, problem, party, rolls, join, leave, shareCharacter, shareRoll }),
-    [seat, invite, status, problem, party, rolls, join, leave, shareCharacter, shareRoll],
+    () => ({ seat, invite, status, problem, party, rolls, handouts, join, leave, shareCharacter, shareRoll }),
+    [seat, invite, status, problem, party, rolls, handouts, join, leave, shareCharacter, shareRoll],
   );
   return <TableContext.Provider value={value}>{children}</TableContext.Provider>;
 }

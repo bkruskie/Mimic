@@ -146,6 +146,34 @@ try {
   check(!/Ambush/.test(shown), "the display never receives the secret roll");
   await shot(display, "display");
 
+  // ----- Handouts: written in private, shown when the DM chooses -----
+  const writeHandout = async (title, body) => {
+    await dm.page.getByRole("button", { name: "Write a handout" }).click();
+    await dm.page.getByLabel("Title").fill(title);
+    await dm.page.getByLabel("Text").fill(body);
+    await dm.page.getByRole("button", { name: "Save handout" }).click();
+  };
+  await writeHandout("The ferryman's letter", "Meet me at the **Sunken Bell** at midnight.");
+  await writeHandout("Villain's plan", "Flood the lower city.");
+  await alice.page.waitForTimeout(1000);
+  await alice.page.locator(".chip-table").click();
+  check(!/ferryman|Villain/.test(await alice.page.getByRole("dialog").innerText()), "saved handouts stay with the DM");
+  await alice.page.keyboard.press("Escape");
+  await dm.page.getByRole("article", { name: "The ferryman's letter" }).getByRole("button", { name: "Show to the party" }).click();
+  await eventually(async () => (await alice.page.getByText("New handout: The ferryman's letter").count()) > 0, "Alice is told about the new handout");
+  await alice.page.locator(".chip-table").click();
+  const drawer = await alice.page.getByRole("dialog").innerText();
+  check(/The ferryman's letter/.test(drawer) && !/Villain's plan/.test(drawer), "Alice gets the shown handout and not the hidden one");
+  await alice.page.getByRole("dialog").getByText("The ferryman's letter").click();
+  check(/Meet me at the Sunken Bell at midnight/.test(await alice.page.getByRole("dialog").innerText()), "and can read it");
+  await shot(alice.page, "alice-handout");
+  await alice.page.keyboard.press("Escape");
+  await eventually(async () => /Meet me at the Sunken Bell/.test(await display.locator("main").innerText()), "the display shows the handout");
+  check(!/Flood the lower city/.test(await display.locator("main").innerText()), "but never the hidden one");
+  await shot(display, "display-handout");
+  await dm.page.getByRole("article", { name: "The ferryman's letter" }).getByRole("button", { name: "Hide again" }).click();
+  await eventually(async () => !/ferryman/.test(await display.locator("main").innerText()), "hiding it again takes it off the display");
+
   // ----- Replacing the link keeps out anyone holding the old one -----
   await dm.page.getByRole("button", { name: "Replace link" }).click();
   await eventually(async () => (await dm.page.getByRole("textbox", { name: "Invite link" }).inputValue()) !== invite, "the DM replaces the invite link");

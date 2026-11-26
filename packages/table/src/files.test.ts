@@ -56,3 +56,16 @@ describe("vault backups", () => {
     expect(importVaultBackup({ format: "mimicbox-character", formatVersion: 1, character: a }, content).characters).toHaveLength(1);
   });
 });
+
+describe("campaign files with handouts", () => {
+  it("keep handouts and their reveal state", async () => {
+    const { saveHandout, setHandoutRevealed } = await import("./index.js");
+    let c = saveHandout(played(), { id: "h1", title: "Map of the docks", body: "x" });
+    c = setHandoutRevealed(saveHandout(c, { id: "h2", title: "Secret", body: "y" }), "h1", true);
+    const { campaign } = importCampaign(JSON.parse(JSON.stringify(exportCampaign(c))), content, { room: "r", key: "k" });
+    expect(campaign.handouts?.map((h) => [h.title, h.revealed])).toEqual([
+      ["Map of the docks", true],
+      ["Secret", false],
+    ]);
+  });
+});

@@ -10,6 +10,7 @@ import {
   type DisplayView,
   type HostMessage,
   type PartyMember,
+  type PublicHandout,
   type SharedRoll,
 } from "./protocol.js";
 
@@ -26,6 +27,19 @@ export interface Member {
   joinedAt: string;
 }
 
+/** A handout or note the DM writes. Hidden until revealed; hiding it again removes it from players' views. */
+export interface Handout {
+  id: string;
+  title: string;
+  body: string;
+  revealed: boolean;
+  revealedAt: string | null;
+  createdAt: string;
+}
+
+/** Longest handout text accepted, in characters. */
+export const HANDOUT_MAX_LENGTH = 20000;
+
 /** A campaign as the DM's device stores it. */
 export interface HostCampaign {
   id: string;
@@ -35,6 +49,8 @@ export interface HostCampaign {
   key: string;
   members: Record<string, Member>;
   rolls: SharedRoll[];
+  /** Missing on campaigns saved before handouts. */
+  handouts?: Handout[];
   /** Recently applied command ids, per member. */
   seen: Record<string, string[]>;
   createdAt: string;
@@ -116,6 +132,33 @@ export function addDmRoll(campaign: HostCampaign, roll: Omit<SharedRoll, "id" | 
   return touch({ ...campaign, rolls: [...campaign.rolls, { ...roll, id: newId(), at: now() }].slice(-ROLL_LOG_LIMIT) });
 }
 
+/** Adds or updates a handout. New handouts start hidden. */
+export function saveHandout(campaign: HostCampaign, h: Pick<Handout, "id" | "title" | "body">): HostCampaign {
+  const list = campaign.handouts ?? [];
+  const existing = list.find((x) => x.id === h.id);
+  const next: Handout = existing
+    ? { ...existing, title: h.title.slice(0, 120), body: h.body.slice(0, HANDOUT_MAX_LENGTH) }
+    : { id: h.id, title: h.title.slice(0, 120), body: h.body.slice(0, HANDOUT_MAX_LENGTH), revealed: false, revealedAt: null, createdAt: now() };
+  return touch({ ...campaign, handouts: existing ? list.map((x) => (x.id === h.id ? next : x)) : [...list, next] });
+}
+
+/** Shows a handout to the party and the table display, or hides it again. */
+export function setHandoutRevealed(campaign: HostCampaign, id: string, revealed: boolean): HostCampaign {
+  return touch({ ...campaign, handouts: (campaign.handouts ?? []).map((h) => (h.id === id ? { ...h, revealed, revealedAt: revealed ? now() : null } : h)) });
+}
+
+export function removeHandout(campaign: HostCampaign, id: string): HostCampaign {
+  return touch({ ...campaign, handouts: (campaign.handouts ?? []).filter((h) => h.id !== id) });
+}
+
+/** Revealed handouts, newest reveal last. Hidden ones are never part of any view. */
+export function revealedHandouts(campaign: HostCampaign): PublicHandout[] {
+  return (campaign.handouts ?? [])
+    .filter((h) => h.revealed && h.revealedAt)
+    .sort((a, b) => a.revealedAt!.localeCompare(b.revealedAt!))
+    .map((h) => ({ id: h.id, title: h.title, body: h.body, revealedAt: h.revealedAt! }));
+}
+
 /** Removes a player from the campaign. Their invite key still works until the DM replaces the link. */
 export function removeMember(campaign: HostCampaign, userId: string): HostCampaign {
   const members = { ...campaign.members };
@@ -156,12 +199,23 @@ function party(campaign: HostCampaign, connected: ReadonlySet<string>, content: 
 
 /** Players see the party's summaries and public rolls only: never DM-only rolls or other players' full sheets. */
 export function playerView(campaign: HostCampaign, connected: ReadonlySet<string>, content: Content): HostMessage[] {
-  return [msg({ t: "party", members: party(campaign, connected, content) }), msg({ t: "rolls", rolls: campaign.rolls.filter((r) => r.visibility === "public").slice(-30) })];
+  return [
+    msg({ t: "party", members: party(campaign, connected, content) }),
+    msg({ t: "rolls", rolls: campaign.rolls.filter((r) => r.visibility === "public").slice(-30) }),
+    msg({ t: "handouts", handouts: revealedHandouts(campaign) }),
+  ];
 }
 
 /** A table display sees the same as a player, and nothing it could act on. */
 export function displayView(campaign: HostCampaign, connected: ReadonlySet<string>, content: Content): DisplayView {
-  return { t: "display", v: PROTOCOL_VERSION, campaign: campaign.name, members: party(campaign, connected, content), rolls: campaign.rolls.filter((r) => r.visibility === "public").slice(-12) };
+  return {
+    t: "display",
+    v: PROTOCOL_VERSION,
+    campaign: campaign.name,
+    members: party(campaign, connected, content),
+    rolls: campaign.rolls.filter((r) => r.visibility === "public").slice(-12),
+    spotlight: revealedHandouts(campaign).at(-1) ?? null,
+  };
 }
 
 function touch(c: HostCampaign): HostCampaign {

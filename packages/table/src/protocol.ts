@@ -37,6 +37,15 @@ export interface CharacterSummary {
   portrait: string | null;
 }
 
+/** A handout as players see it: only revealed ones are ever sent. */
+export interface PublicHandout {
+  id: string;
+  title: string;
+  /** Markdown text. */
+  body: string;
+  revealedAt: string;
+}
+
 export interface PartyMember {
   userId: string;
   playerName: string;
@@ -54,6 +63,7 @@ export type HostMessage =
   | { t: "denied"; v: number; reason: string }
   | { t: "party"; v: number; members: PartyMember[] }
   | { t: "rolls"; v: number; rolls: SharedRoll[] }
+  | { t: "handouts"; v: number; handouts: PublicHandout[] }
   | { t: "ack"; v: number; commandId: string };
 
 /** What a table display receives. It never sends game commands. */
@@ -63,6 +73,8 @@ export interface DisplayView {
   campaign: string;
   members: PartyMember[];
   rolls: SharedRoll[];
+  /** The most recently revealed handout, shown large on the table. */
+  spotlight: PublicHandout | null;
 }
 
 const isRecord = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);
@@ -114,6 +126,8 @@ export function parseHostMessage(raw: unknown): HostMessage | null {
       return Array.isArray(raw.members) ? (raw as HostMessage) : null;
     case "rolls":
       return Array.isArray(raw.rolls) ? (raw as HostMessage) : null;
+    case "handouts":
+      return Array.isArray(raw.handouts) ? (raw as HostMessage) : null;
     case "ack":
       return id(raw.commandId) ? (raw as HostMessage) : null;
     default:

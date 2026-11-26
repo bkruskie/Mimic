@@ -3,7 +3,7 @@
  * imported file is checked; characters go through the ruleset's own import checks.
  */
 import { CharacterImportError, importCharacter, type Character, type Content } from "@mimicbox/ruleset-dnd5e";
-import type { HostCampaign, Member } from "./host.js";
+import { HANDOUT_MAX_LENGTH, type Handout, type HostCampaign, type Member } from "./host.js";
 import type { SharedRoll } from "./protocol.js";
 
 export const CAMPAIGN_FORMAT = "mimicbox-campaign";
@@ -55,6 +55,16 @@ export function importCampaign(raw: unknown, content: Content, fresh: { room: st
   const rolls = c.rolls.filter(
     (r): r is SharedRoll => isRecord(r) && typeof r.id === "string" && typeof r.label === "string" && typeof r.total === "number" && (r.visibility === "public" || r.visibility === "dm"),
   );
+  const handouts: Handout[] = (Array.isArray(c.handouts) ? c.handouts : [])
+    .filter((h): h is Record<string, unknown> => isRecord(h) && typeof h.id === "string" && typeof h.title === "string" && typeof h.body === "string")
+    .map((h) => ({
+      id: h.id as string,
+      title: (h.title as string).slice(0, 120),
+      body: (h.body as string).slice(0, HANDOUT_MAX_LENGTH),
+      revealed: h.revealed === true && typeof h.revealedAt === "string",
+      revealedAt: h.revealed === true && typeof h.revealedAt === "string" ? h.revealedAt : null,
+      createdAt: typeof h.createdAt === "string" ? h.createdAt : new Date().toISOString(),
+    }));
   const now = new Date().toISOString();
   return {
     campaign: {
@@ -64,6 +74,7 @@ export function importCampaign(raw: unknown, content: Content, fresh: { room: st
       key: fresh.key,
       members,
       rolls,
+      handouts,
       seen: {},
       createdAt: typeof c.createdAt === "string" ? c.createdAt : now,
       updatedAt: now,
