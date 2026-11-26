@@ -6,7 +6,16 @@ import { ABILITIES, ABILITY_NAMES, SKILLS, SKILL_IDS, derive, newId, srdContent 
 import {
   CampaignImportError,
   HANDOUT_MAX_LENGTH,
+  addCombatant,
   addDmRoll,
+  endCombat,
+  initiativeOrder,
+  nextTurn,
+  previousTurn,
+  removeCombatant,
+  startCombat,
+  updateCombatant,
+  type Combat,
   createCampaign,
   exportCampaign,
   importCampaign,
@@ -198,6 +207,17 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
         {imported && <p className="notice notice-todo">Imported. Send your players the invite link below: links from before the import don't work.</p>}
         <div className="sheet-grid studio-grid">
           <div className="sheet-col">
+            <CombatPanel
+              combat={campaign.combat ?? null}
+              canStart={members.some((m) => m.character)}
+              onStart={() => update((c) => ({ ...c, ...startCombat(c, newId) }))}
+              onEnd={() => update((c) => ({ ...c, ...endCombat(c) }))}
+              onNext={() => update((c) => ({ ...c, ...nextTurn(c) }))}
+              onPrevious={() => update((c) => ({ ...c, ...previousTurn(c) }))}
+              onAdd={(x) => update((c) => ({ ...c, ...addCombatant(c, x) }))}
+              onChange={(id, patch) => update((c) => ({ ...c, ...updateCombatant(c, id, patch) }))}
+              onRemove={(id) => update((c) => ({ ...c, ...removeCombatant(c, id) }))}
+            />
             <section className="section">
               <h2>Party</h2>
               {members.length === 0 && <p className="muted">No one has joined yet. Send your players the invite link.</p>}
@@ -546,6 +566,165 @@ function Handouts({
           Write a handout
         </button>
       )}
+    </section>
+  );
+}
+
+function CombatPanel({
+  combat,
+  canStart,
+  onStart,
+  onEnd,
+  onNext,
+  onPrevious,
+  onAdd,
+  onChange,
+  onRemove,
+}: {
+  combat: Combat | null;
+  canStart: boolean;
+  onStart: () => void;
+  onEnd: () => void;
+  onNext: () => void;
+  onPrevious: () => void;
+  onAdd: (c: { id: string; name: string; initiative: number | null; hidden: boolean; hp: { current: number; max: number } | null }) => void;
+  onChange: (id: string, patch: { initiative?: number | null; hidden?: boolean; hp?: { current: number; max: number } | null }) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const [mod, setMod] = useState("0");
+  const [hp, setHp] = useState("");
+  const [hidden, setHidden] = useState(false);
+  const [confirmEnd, setConfirmEnd] = useState(false);
+  if (!combat) {
+    return (
+      <section className="section panel">
+        <h2>Combat</h2>
+        <p className="muted small" style={{ marginTop: 4 }}>
+          Starting combat adds every player's character and asks them to roll initiative on their sheet.
+        </p>
+        <button className="btn btn-primary" disabled={!canStart} onClick={onStart}>
+          Start combat
+        </button>
+        {!canStart && <p className="muted small">Players join and share a character first.</p>}
+      </section>
+    );
+  }
+  const order = initiativeOrder(combat.combatants);
+  const modifier = Number.parseInt(mod, 10);
+  const maxHp = Number.parseInt(hp, 10);
+  return (
+    <section className="section panel" aria-label="Combat">
+      <div className="spread">
+        <h2>Combat, round {combat.round}</h2>
+        <span className="row">
+          <button className="btn" onClick={onPrevious} disabled={combat.turnId === null}>
+            Previous
+          </button>
+          <button className="btn btn-primary" onClick={onNext} disabled={order.length === 0}>
+            {combat.turnId === null ? "First turn" : "Next turn"}
+          </button>
+        </span>
+      </div>
+      <ol className="initiative" aria-label="Initiative order">
+        {order.map((c) => (
+          <li key={c.id} aria-current={c.id === combat.turnId ? "true" : undefined}>
+            <input
+              className="input init-input"
+              inputMode="numeric"
+              aria-label={`${c.name} initiative`}
+              value={c.initiative ?? ""}
+              placeholder="–"
+              onChange={(e) => {
+                const v = e.target.value.trim();
+                const n = Number.parseInt(v, 10);
+                onChange(c.id, { initiative: v === "" || Number.isNaN(n) ? null : n });
+              }}
+            />
+            <span className="grow">
+              {c.name}
+              <br />
+              <span className="muted small">{c.memberId ? (c.initiative === null ? "Player, waiting for their roll" : "Player") : c.hidden ? "Hidden from players" : "Creature"}</span>
+            </span>
+            {c.hp && (
+              <span className="row" style={{ gap: 4, alignItems: "center" }}>
+                <button className="btn btn-quiet" aria-label={`${c.name} loses 1 HP`} onClick={() => onChange(c.id, { hp: { ...c.hp!, current: Math.max(0, c.hp!.current - 1) } })}>
+                  −
+                </button>
+                <input
+                  className="input init-input"
+                  inputMode="numeric"
+                  aria-label={`${c.name} hit points`}
+                  value={c.hp.current}
+                  onChange={(e) => {
+                    const n = Number.parseInt(e.target.value, 10);
+                    if (!Number.isNaN(n)) onChange(c.id, { hp: { ...c.hp!, current: Math.max(0, n) } });
+                  }}
+                />
+                <span className="muted small">/ {c.hp.max}</span>
+              </span>
+            )}
+            {!c.memberId && (
+              <>
+                <button className="btn btn-quiet small" onClick={() => onChange(c.id, { hidden: !c.hidden })}>
+                  {c.hidden ? "Reveal" : "Hide"}
+                </button>
+                <button className="btn btn-quiet small" aria-label={`Remove ${c.name}`} onClick={() => onRemove(c.id)}>
+                  Remove
+                </button>
+              </>
+            )}
+          </li>
+        ))}
+      </ol>
+      <form
+        className="row"
+        style={{ marginTop: 12, alignItems: "end" }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!name.trim() || Number.isNaN(modifier)) return;
+          const roll = rollDice(`1d20${modifier >= 0 ? "+" : ""}${modifier}`).total;
+          onAdd({ id: newId(), name: name.trim(), initiative: roll, hidden, hp: maxHp > 0 ? { current: maxHp, max: maxHp } : null });
+          setName("");
+          setHp("");
+        }}
+      >
+        <label className="field" style={{ flex: 2, minWidth: 140 }}>
+          <span>Creature</span>
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ogre" maxLength={60} />
+        </label>
+        <label className="field" style={{ width: 90 }}>
+          <span>Init bonus</span>
+          <input className="input" inputMode="numeric" value={mod} onChange={(e) => setMod(e.target.value)} />
+        </label>
+        <label className="field" style={{ width: 90 }}>
+          <span>HP</span>
+          <input className="input" inputMode="numeric" value={hp} onChange={(e) => setHp(e.target.value)} />
+        </label>
+        <label className="row" style={{ alignItems: "center", gap: 6, minHeight: 44 }}>
+          <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} />
+          <span>Hidden</span>
+        </label>
+        <button className="btn" disabled={!name.trim() || Number.isNaN(modifier)}>
+          Add and roll
+        </button>
+      </form>
+      <div style={{ marginTop: 12 }}>
+        {confirmEnd ? (
+          <span className="row">
+            <button className="btn btn-danger" onClick={onEnd}>
+              End combat
+            </button>
+            <button className="btn" onClick={() => setConfirmEnd(false)}>
+              Keep fighting
+            </button>
+          </span>
+        ) : (
+          <button className="btn btn-quiet" onClick={() => setConfirmEnd(true)}>
+            End combat
+          </button>
+        )}
+      </div>
     </section>
   );
 }

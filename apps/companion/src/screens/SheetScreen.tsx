@@ -167,6 +167,7 @@ export function SheetScreen({ id }: { id: string }) {
       </header>
 
       <main className={cols > 1 ? "screen wide" : "screen"} style={{ paddingTop: 8 }}>
+        {atTable && table.combat && <CombatBanner sheet={sheet} onRollInitiative={() => ask({ label: "Initiative", expression: "", d20Modifier: sheet.initiative.value })} onOpen={() => setDrawer("party")} />}
         {sheet.pending.length > 0 && (cols > 1 || tab !== "notes") && (
           <button
             className="notice notice-todo"
@@ -544,7 +545,21 @@ function PartyDrawer({ onClose }: { onClose: () => void }) {
               : "Connecting…"}
         </p>
       )}
-      <h3>Party</h3>
+      {table.combat && (
+        <>
+          <h3>Combat, round {table.combat.round}</h3>
+          <ol className="initiative" aria-label="Initiative order">
+            {table.combat.order.map((c) => (
+              <li key={c.id} aria-current={c.id === table.combat!.turnId ? "true" : undefined} className={c.memberId === table.memberId ? "you" : ""}>
+                <span className="init">{c.initiative ?? "–"}</span>
+                <span className="grow">{c.name}</span>
+                {c.id === table.combat!.turnId && <span className="small">Acting</span>}
+              </li>
+            ))}
+          </ol>
+        </>
+      )}
+      <h3 style={{ marginTop: 16 }}>Party</h3>
       {table.party.length === 0 && <p className="muted">No one else yet.</p>}
       <ul className="rows" aria-label="Party">
         {table.party.map((m) => (
@@ -600,5 +615,27 @@ function PartyDrawer({ onClose }: { onClose: () => void }) {
         Leave the game
       </button>
     </Drawer>
+  );
+}
+
+function CombatBanner({ sheet, onRollInitiative, onOpen }: { sheet: DerivedSheet; onRollInitiative: () => void; onOpen: () => void }) {
+  const table = useTable();
+  const combat = table.combat!;
+  const mine = combat.order.find((c) => c.memberId === table.memberId);
+  const yourTurn = mine && combat.turnId === mine.id;
+  if (mine && mine.initiative === null) {
+    return (
+      <div className="notice notice-todo combat-banner" role="status">
+        <span>Combat has started. Roll initiative ({formatModifier(sheet.initiative.value)}).</span>
+        <button className="btn btn-primary" onClick={onRollInitiative}>
+          Roll initiative
+        </button>
+      </div>
+    );
+  }
+  return (
+    <button className={yourTurn ? "notice combat-banner your-turn" : "notice combat-banner"} style={{ width: "100%", textAlign: "left", border: 0 }} onClick={onOpen} role="status">
+      {yourTurn ? `Your turn. Round ${combat.round}.` : `Round ${combat.round}. ${combat.order.find((c) => c.id === combat.turnId)?.name ?? "Waiting for the next turn"}${combat.order.some((c) => c.id === combat.turnId) ? " is acting." : "."}`}
+    </button>
   );
 }

@@ -38,6 +38,19 @@ export function DisplayApp() {
         </button>
       </header>
       <div className="display-body">
+        {view.combat && (
+          <section aria-label="Initiative" className="display-combat">
+            <h2>Round {view.combat.round}</h2>
+            <ol className="initiative">
+              {view.combat.order.map((c) => (
+                <li key={c.id} aria-current={c.id === view.combat!.turnId ? "true" : undefined}>
+                  <span className="init">{c.initiative ?? "–"}</span>
+                  <span className="grow">{c.name}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
         <section aria-label="Party" className="display-party">
           {view.members.filter((m) => m.character).length === 0 && <p className="muted">The party appears here as players join.</p>}
           {view.members
