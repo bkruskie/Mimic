@@ -139,7 +139,7 @@ describe("Warlock 11: invocations and Mystic Arcanum", () => {
     const s = derive(c, content);
     expect(s.pending.some((p) => p.kind === "class-options" || p.kind === "mystic-arcanum")).toBe(false);
     expect(s.ac.value).toBe(15); // Mage Armor 13 + Dex 2
-    expect(s.attacksPerAction).toEqual({ count: 2, source: "Thirsting Blade (pact weapon only)" });
+    expect(s.attacksPerAction).toEqual({ count: 2, source: "Thirsting Blade, pact weapon only" });
     expect(s.grantedSpells.find((g) => g.id === "circle-of-death")?.freeCast).toBe(true);
     expect(s.resources.some((r) => r.id === "free-cast:circle-of-death")).toBe(true);
     expect(s.features.some((f) => f.name === "Thirsting Blade" && f.source === "Eldritch Invocation")).toBe(true);

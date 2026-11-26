@@ -345,6 +345,26 @@ try {
   const tabText = await page.locator("main").innerText();
   check(acAfter === acBefore + 1 && /Hexblade Dagger/.test(tabText), "homebrew added just before a reload survives it");
 
+  // ----- Tablet and desktop: every section side by side, no tab bar -----
+  for (const [width, height, cols] of [
+    [1024, 768, 2],
+    [1440, 900, 3],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await page.waitForTimeout(250);
+    check((await page.locator(".tabbar").count()) === 0, `${width} px wide: no tab bar`);
+    check((await page.locator(".sheet-col").count()) === cols, `${width} px wide: ${cols} columns`);
+    const all = await page.locator("main").innerText();
+    check(["Attacks", "Features and traits", "Homebrew", "Spell slots"].every((h) => all.includes(h)), `${width} px wide: actions, spells and notes all show at once`);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    check(overflow <= 0, `${width} px wide: nothing runs off the side of the screen`);
+    await shot(`sheet-${width}`);
+  }
+  await page.getByText(/choices are still open/).click();
+  await page.waitForTimeout(600);
+  check(await page.locator("#todo").evaluate((el) => el.getBoundingClientRect().top < window.innerHeight), "the To do banner scrolls to the open choices");
+  await page.setViewportSize({ width: 390, height: 844 });
+
   check(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(" | ")}` : ""}`);
   console.log(`\nAll checks passed. Screenshots in ${SHOTS}`);
 } catch (e) {

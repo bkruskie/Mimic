@@ -43,7 +43,7 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
   return (
     <>
       {sheet.pending.length > 0 && (
-        <section className="section panel">
+        <section className="section panel" id="todo" style={{ scrollMarginTop: 180 }}>
           <h2>To do</h2>
           <ul className="small" style={{ margin: "6px 0 0", paddingLeft: 18 }}>
             {sheet.pending.map((p, i) => (

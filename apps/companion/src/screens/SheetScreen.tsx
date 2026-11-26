@@ -29,12 +29,29 @@ export interface SheetProps {
 
 type Tab = "actions" | "abilities" | "spells" | "gear" | "notes";
 
+/** How many columns the sheet gets: tabs on phones, every section side by side on tablets and desktops. */
+function useColumns(): 1 | 2 | 3 {
+  const query = (q: string) => typeof window !== "undefined" && window.matchMedia(q).matches;
+  const measure = (): 1 | 2 | 3 => (query("(min-width: 1280px)") ? 3 : query("(min-width: 900px)") ? 2 : 1);
+  const [cols, setCols] = useState(measure);
+  useEffect(() => {
+    const lists = ["(min-width: 1280px)", "(min-width: 900px)"].map((q) => window.matchMedia(q));
+    const onChange = () => setCols(measure());
+    lists.forEach((l) => l.addEventListener("change", onChange));
+    return () => lists.forEach((l) => l.removeEventListener("change", onChange));
+  }, []);
+  return cols;
+}
+
+const TAB_LABELS: Record<Tab, string> = { actions: "Actions", abilities: "Skills", spells: "Spells", gear: "Gear", notes: "Notes" };
+
 export function SheetScreen({ id }: { id: string }) {
   const { character, sheet, update, missing } = useCharacter(id);
   const roller = useRoller(id);
   const [tab, setTab] = useState<Tab>(() => (sessionStorage.getItem(`tab:${id}`) as Tab | null) ?? "actions");
   const [lastAsk, setLastAsk] = useState<RollAsk | null>(null);
   const [drawer, setDrawer] = useState<"hp" | "conditions" | "dice" | "history" | null>(null);
+  const cols = useColumns();
 
   useEffect(() => {
     try {
@@ -69,7 +86,7 @@ export function SheetScreen({ id }: { id: string }) {
   return (
     <>
       <header className="sheet-top">
-        <div className="sheet-top-inner">
+        <div className={cols > 1 ? "sheet-top-inner wide" : "sheet-top-inner"}>
           <div className="sheet-title">
             <button className="btn btn-quiet" style={{ padding: "6px", minHeight: 40 }} aria-label="Back to the vault" onClick={() => go({ name: "vault" })}>
               <BackIcon width={22} height={22} />
@@ -126,39 +143,68 @@ export function SheetScreen({ id }: { id: string }) {
         </div>
       </header>
 
-      <main className="screen" style={{ paddingTop: 8 }}>
-        {sheet.pending.length > 0 && tab !== "notes" && (
-          <button className="notice notice-todo" style={{ width: "100%", textAlign: "left", border: 0, marginTop: 8 }} onClick={() => setTab("notes")}>
-            {sheet.pending.length === 1 ? sheet.pending[0]!.message : `${sheet.pending.length} choices are still open.`} Finish them in Notes.
+      <main className={cols > 1 ? "screen wide" : "screen"} style={{ paddingTop: 8 }}>
+        {sheet.pending.length > 0 && (cols > 1 || tab !== "notes") && (
+          <button
+            className="notice notice-todo"
+            style={{ width: "100%", textAlign: "left", border: 0, marginTop: 8 }}
+            onClick={() => (cols > 1 ? document.getElementById("todo")?.scrollIntoView({ behavior: "smooth", block: "start" }) : setTab("notes"))}
+          >
+            {sheet.pending.length === 1 ? sheet.pending[0]!.message : `${sheet.pending.length} choices are still open.`} Finish them {cols > 1 ? "under To do" : "in Notes"}.
           </button>
         )}
-        {tab === "actions" && <ActionsTab {...props} />}
-        {tab === "abilities" && <AbilitiesTab {...props} />}
-        {tab === "spells" && <SpellsTab {...props} />}
-        {tab === "gear" && <GearTab {...props} />}
-        {tab === "notes" && <NotesTab {...props} onHistory={() => setDrawer("history")} />}
+        {cols === 1 ? (
+          <>
+            {tab === "actions" && <ActionsTab {...props} />}
+            {tab === "abilities" && <AbilitiesTab {...props} />}
+            {tab === "spells" && <SpellsTab {...props} />}
+            {tab === "gear" && <GearTab {...props} />}
+            {tab === "notes" && <NotesTab {...props} onHistory={() => setDrawer("history")} />}
+          </>
+        ) : (
+          <div className="sheet-grid">
+            {(cols === 3
+              ? [["abilities"], ["actions", "spells"], ["gear", "notes"]]
+              : [["abilities", "gear"], ["actions", "spells", "notes"]]
+            ).map((column, i) => (
+              <div key={i} className="sheet-col">
+                {column.map((section) => (
+                  <div key={section} className="sheet-block" aria-label={TAB_LABELS[section as Tab]} role="region">
+                    {section === "actions" && <ActionsTab {...props} />}
+                    {section === "abilities" && <AbilitiesTab {...props} />}
+                    {section === "spells" && <SpellsTab {...props} />}
+                    {section === "gear" && <GearTab {...props} />}
+                    {section === "notes" && <NotesTab {...props} onHistory={() => setDrawer("history")} />}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
       </main>
 
       <button className="die-fab" aria-label="Roll dice" onClick={() => setDrawer("dice")}>
         <D20Icon />
       </button>
 
-      <nav className="tabbar" aria-label="Sheet sections">
-        {(
-          [
-            ["actions", "Actions", SwordIcon],
-            ["abilities", "Skills", StarIcon],
-            ["spells", "Spells", SparkIcon],
-            ["gear", "Gear", BagIcon],
-            ["notes", "Notes", ScrollIcon],
-          ] as const
-        ).map(([t, label, Icon]) => (
-          <button key={t} aria-current={tab === t ? "page" : undefined} onClick={() => setTab(t)}>
-            <Icon />
-            {label}
-          </button>
-        ))}
-      </nav>
+      {cols === 1 && (
+        <nav className="tabbar" aria-label="Sheet sections">
+          {(
+            [
+              ["actions", SwordIcon],
+              ["abilities", StarIcon],
+              ["spells", SparkIcon],
+              ["gear", BagIcon],
+              ["notes", ScrollIcon],
+            ] as const
+          ).map(([t, Icon]) => (
+            <button key={t} aria-current={tab === t ? "page" : undefined} onClick={() => setTab(t)}>
+              <Icon />
+              {TAB_LABELS[t]}
+            </button>
+          ))}
+        </nav>
+      )}
 
       {roller.shown && (
         <RollDrawer

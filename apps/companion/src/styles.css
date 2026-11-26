@@ -945,3 +945,43 @@ details.feature[open] {
 .score-table .stepper output {
   color: var(--bone);
 }
+
+/* ---------- tablet and desktop: every section side by side ---------- */
+.sheet-grid {
+  display: grid;
+  gap: 0 32px;
+  align-items: start;
+}
+.sheet-col {
+  min-width: 0;
+}
+.sheet-grid .ability-grid {
+  grid-template-columns: repeat(3, 1fr);
+}
+@media (min-width: 900px) {
+  .screen.wide,
+  .sheet-top-inner.wide {
+    max-width: 1480px;
+  }
+  .screen.wide {
+    padding-bottom: 120px;
+  }
+  .sheet-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .screen.wide ~ .die-fab {
+    bottom: calc(24px + var(--safe-bottom));
+    right: 24px;
+  }
+}
+@media (min-width: 1280px) {
+  .sheet-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (min-width: 900px) {
+  .sheet-top-inner.wide .vitals {
+    grid-template-columns: minmax(0, 460px) auto auto auto;
+    justify-content: start;
+  }
+}

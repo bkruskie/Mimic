@@ -540,7 +540,7 @@ export function derive(character: Character, content: Content): DerivedSheet {
     const extra = attacksPerAction(e.id, e.level);
     if (extra && extra.count > attacksPerActionValue.count) attacksPerActionValue = extra;
   }
-  if (warlockOptions.includes("thirsting-blade") && attacksPerActionValue.count < 2) attacksPerActionValue = { count: 2, source: "Thirsting Blade (pact weapon only)" };
+  if (warlockOptions.includes("thirsting-blade") && attacksPerActionValue.count < 2) attacksPerActionValue = { count: 2, source: "Thirsting Blade, pact weapon only" };
   const radiantStrikes = Boolean(paladin && paladin.level >= 11);
 
   const weaponItems = character.inventory.filter((i) => i.equipped && i.ref?.kind === "weapon");
