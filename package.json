@@ -1,6 +1,7 @@
 {
   "name": "mimicbox",
   "private": true,
+  "license": "MIT",
   "description": "Mimic Box VTT: a free, local-first tabletop roleplaying platform. Phase 1 is the offline character sheet.",
   "type": "module",
   "packageManager": "pnpm@10.28.0",

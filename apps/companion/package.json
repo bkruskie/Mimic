@@ -2,6 +2,7 @@
   "name": "@mimicbox/companion",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Mimic Box player app. Phase 1: the offline character sheet.",
   "scripts": {

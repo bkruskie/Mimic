@@ -2,6 +2,7 @@
   "name": "@mimicbox/ruleset-dnd5e",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "D&D 5e (2024) ruleset for Mimic Box, with SRD 5.2.1 content.",
   "exports": {

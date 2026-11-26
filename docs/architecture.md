@@ -516,17 +516,15 @@ Neon Odyssey waits until its rules are published (estimated Q4 2027). The licenc
 
 ## Open decisions and assumptions
 
-Two decisions still need the owner. Everything else below is a reversible assumption Phase 0 proceeds on.
+No decisions are waiting on the owner. Everything below the decided list is a reversible assumption Phase 0 proceeds on.
 
 ### Decided
 
 - [x] **Neon Odyssey: wait for release** (Nov 26, 2026). No ruleset work and no licence outreach until its rules are published. Its text is never shipped without permission.
 - [x] **A DM hosts for $0** (Nov 26, 2026). Hosting needs no account, card, domain, server or subscription from the DM. The host runs on the DM's own computer; the connection broker, STUN and relay are shared free services run by the project; when the free relay allowance runs out, Mimic Box stops offering the relay rather than charging anyone. A DM can also host on the local network with no internet service at all, or run their own broker for free.
-
-### Needs your decision
-
-- [ ] **Code signing.** Signing certificates cost money every year, so a zero-cost Mimic Box ships unsigned, which shows "unknown developer" warnings on Windows and macOS. Plan: clear install steps, and applications to free signing programmes for open-source projects. Confirm you accept this.
-- [ ] **Who runs the shared connection broker.** DMs never run it. It should be one free Cloudflare account you control, with no payment method attached, on the free `pages.dev` and `workers.dev` addresses so there is no domain to pay for.
+- [x] **Desktop app ships unsigned** (Nov 26, 2026). Mimic Box is free and open source, so it pays for no signing certificate. Install instructions explain the "unknown developer" warning on Windows and macOS, and free open-source signing programmes can be applied for later.
+- [x] **Code licence: MIT** (Nov 26, 2026). The SRD content pack stays under CC-BY-4.0 with its attribution.
+- [x] **Hosting the sheet before Phase 3: GitHub Pages** (Nov 26, 2026). The character sheet is a static app, so it is published free from the existing GitHub repository; no Cloudflare account is needed yet. The shared Cloudflare account for the connection broker is set up in Phase 3, with a step-by-step guide, on a free plan with no payment method attached.
 
 ### Assumptions in force
 

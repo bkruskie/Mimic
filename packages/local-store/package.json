@@ -2,6 +2,7 @@
   "name": "@mimicbox/local-store",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "On-device storage for Mimic Box: the character vault, roll history and storage persistence.",
   "exports": {

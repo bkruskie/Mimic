@@ -48,4 +48,4 @@ This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1
 
 Fonts: Fraunces and Atkinson Hyperlegible, both under the SIL Open Font Licence. The app icon and interface icons were drawn for this project.
 
-A licence for Mimic Box's own code has not been chosen yet.
+Mimic Box's own code is under the [MIT licence](LICENSE). The SRD content pack in `packages/ruleset-dnd5e/content` stays under CC-BY-4.0 with its attribution.
