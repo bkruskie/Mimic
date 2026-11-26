@@ -4,14 +4,24 @@
  */
 import { findBackground, findClass, findSpecies } from "./content.js";
 import {
+  CAPSTONE_ABILITIES,
   CLASS_CHOICES,
+  EPIC_BOON_LEVEL,
+  FEAT_ABILITY_INCREASE,
   FIGHTING_STYLE_LEVEL,
+  MYSTIC_ARCANUM,
   SPECIES_CHOICES,
   SPECIES_RESISTANCE,
   SPELLCASTING_ABILITY,
   SUBCLASS_CHOICES,
   asiLevels,
+  attacksPerAction,
+  championCritRange,
+  classOptionRule,
   classResources,
+  laterSaveProficiencies,
+  optionLevelPrerequisite,
+  optionRequires,
   expertiseCount,
   speciesResources,
   weaponMasteryCount,
@@ -77,7 +87,11 @@ export interface PendingChoice {
     | "weapon-mastery"
     | "asi"
     | "cantrips"
-    | "prepared";
+    | "prepared"
+    | "class-options"
+    | "epic-boon"
+    | "feat-ability"
+    | "mystic-arcanum";
   message: string;
   /** Extra detail the UI needs: counts, levels, choice keys. */
   key?: string;
@@ -125,6 +139,8 @@ export interface DerivedSheet {
   skills: Record<SkillId, { total: Sourced; ability: Ability; proficiency: ProficiencyLevel }>;
   passive: { perception: number; insight: number; investigation: number };
   ac: Sourced;
+  /** Attacks per Attack action, from Extra Attack and similar features. */
+  attacksPerAction: { count: number; source: string | null };
   initiative: Sourced;
   initiativeAdvantage: boolean;
   speed: Sourced;
@@ -216,33 +232,58 @@ export function derive(character: Character, content: Content): DerivedSheet {
       message: `Choose your ${background.name} ability increases: +2 and +1, or +1 to all three of ${background.abilityOptions.map((a) => ABILITY_NAMES[a]).join(", ")}.`,
     });
   }
+  // Increases apply in order of their cap: the usual maximum of 20 first, then capstones (25), then Epic Boons (30).
+  const increases: { ability: Ability; label: string; value: number; cap: number }[] = [];
   for (const a of ABILITIES) {
     const v = bgInc[a] ?? 0;
-    if (v) scoreSources[a].push({ label: `${background.name} background`, value: v });
+    if (v) increases.push({ ability: a, label: `${background.name} background`, value: v, cap: 20 });
   }
   for (const feat of build.feats) {
+    const def = content.feats.find((d) => d.id === feat.id);
+    const cap = FEAT_ABILITY_INCREASE[feat.id]?.max ?? 20;
     for (const a of ABILITIES) {
       const v = feat.abilityIncreases?.[a] ?? 0;
-      if (v) scoreSources[a].push({ label: feat.id === "ability-score-improvement" ? `Ability Score Improvement (level ${feat.source.split(":").pop()})` : feat.id, value: v });
+      if (!v) continue;
+      const label = feat.id === "ability-score-improvement" ? `Ability Score Improvement (level ${feat.source.split(":").pop()})` : def?.name ?? feat.id;
+      increases.push({ ability: a, label, value: v, cap });
     }
   }
+  for (const e of entries) {
+    const cap = CAPSTONE_ABILITIES[e.id];
+    if (cap && e.level >= 20) for (const a of cap.abilities) increases.push({ ability: a, label: cap.source, value: cap.amount, cap: cap.max });
+  }
+  increases.sort((x, y) => x.cap - y.cap);
   const scores = {} as Record<Ability, Sourced>;
   for (const a of ABILITIES) {
-    const raw = sum(scoreSources[a]);
-    if (raw.value > 20) {
-      raw.sources.push({ label: "Maximum of 20", value: 20 - raw.value });
-      raw.value = 20;
+    const sources = scoreSources[a];
+    let current = build.baseAbilities[a];
+    for (const inc of increases.filter((i) => i.ability === a)) {
+      const applied = Math.max(0, Math.min(inc.value, inc.cap - current));
+      if (applied < inc.value) warnings.push(`${inc.label} raises ${ABILITY_NAMES[a]} by ${inc.value}, but only ${applied} counts: the maximum is ${inc.cap}.`);
+      if (applied > 0 || inc.value > 0) sources.push({ label: applied < inc.value ? `${inc.label} (maximum ${inc.cap})` : inc.label, value: applied });
+      current += applied;
     }
-    scores[a] = raw;
+    scores[a] = sum(sources);
   }
   const mods = Object.fromEntries(ABILITIES.map((a) => [a, abilityMod(scores[a].value)])) as Record<Ability, number>;
 
   // ----- saving throws -----
   const saveProf = new Set<Ability>(primaryClass?.savingThrows ?? []);
+  const laterSaveSource = new Map<Ability, string>();
+  for (const e of entries) {
+    const later = laterSaveProficiencies(e.id, e.level);
+    for (const a of later?.abilities ?? []) if (!saveProf.has(a)) {
+      saveProf.add(a);
+      laterSaveSource.set(a, later!.source);
+    }
+  }
+  const paladin = entries.find((e) => e.id === "paladin");
+  const aura = paladin && paladin.level >= 6 ? Math.max(1, mods.cha) : 0;
   const abilities = {} as DerivedSheet["abilities"];
   for (const a of ABILITIES) {
     const sources: Source[] = [{ label: `${ABILITY_NAMES[a]} modifier`, value: mods[a] }];
-    if (saveProf.has(a)) sources.push({ label: "Proficiency", value: proficiencyBonus });
+    if (saveProf.has(a)) sources.push({ label: laterSaveSource.has(a) ? `Proficiency (${laterSaveSource.get(a)})` : "Proficiency", value: proficiencyBonus });
+    if (aura) sources.push({ label: "Aura of Protection (while conscious)", value: aura });
     abilities[a] = { score: scores[a], mod: mods[a], save: sum(sources), saveProficient: saveProf.has(a) };
   }
 
@@ -316,6 +357,40 @@ export function derive(character: Character, content: Content): DerivedSheet {
         pending.push({ kind: "asi", message: `Level ${asiLevel}: take an Ability Score Improvement or another feat.`, key: e.id, level: asiLevel });
       }
     }
+    if (e.level >= EPIC_BOON_LEVEL) {
+      const boon = build.feats.find((f) => f.source === `boon:${e.id}:${EPIC_BOON_LEVEL}`);
+      const unspent = boon?.id === "ability-score-improvement" && Object.values(boon.abilityIncreases ?? {}).reduce((t, v) => t + (v ?? 0), 0) < 2;
+      if (!boon || unspent) pending.push({ kind: "epic-boon", message: `Level ${EPIC_BOON_LEVEL}: choose an Epic Boon or another feat.`, key: e.id, level: EPIC_BOON_LEVEL });
+    }
+    const optionRule = classOptionRule(e.id, e.level, row?.columns ?? {});
+    if (optionRule) {
+      const list = cls.options.find((o) => o.id === optionRule.listId);
+      const chosen = e.options ?? [];
+      const gap = optionRule.count - chosen.length;
+      if (gap > 0) pending.push({ kind: "class-options", message: `Choose ${gap} more ${optionRule.label === "Metamagic" ? "Metamagic option" : "Eldritch Invocation"}${gap === 1 ? "" : "s"}.`, count: gap, key: e.id });
+      if (gap < 0) warnings.push(`You have ${chosen.length} ${optionRule.label}; the limit is ${optionRule.count}.`);
+      for (const id of chosen) {
+        const item = list?.items.find((i) => i.id === id);
+        if (!item) continue;
+        const need = optionLevelPrerequisite(item.text);
+        if (need > e.level) warnings.push(`${item.name} needs ${cls.name} level ${need}.`);
+        const requires = optionRequires(item.text);
+        if (requires && !chosen.includes(requires)) warnings.push(`${item.name} needs the ${list!.items.find((i) => i.id === requires)?.name ?? requires} invocation.`);
+      }
+    }
+    if (e.id === "warlock") {
+      for (const [lvl, spellLevel] of Object.entries(MYSTIC_ARCANUM)) {
+        if (e.level >= Number(lvl) && !character.spells.arcanum?.[String(spellLevel)]) {
+          pending.push({ kind: "mystic-arcanum", message: `Choose a level ${spellLevel} spell for Mystic Arcanum.`, key: e.id, level: spellLevel });
+        }
+      }
+    }
+  }
+  for (const f of build.feats) {
+    const rule = FEAT_ABILITY_INCREASE[f.id];
+    if (rule && !Object.values(f.abilityIncreases ?? {}).some((v) => (v ?? 0) > 0)) {
+      pending.push({ kind: "feat-ability", message: `Choose which ability ${content.feats.find((d) => d.id === f.id)?.name ?? f.id} raises by 1.`, key: f.source });
+    }
   }
 
   if (speciesChoice) {
@@ -330,6 +405,8 @@ export function derive(character: Character, content: Content): DerivedSheet {
     }
     if (f.id === "skilled" && (f.skills?.length ?? 0) < 3) pending.push({ kind: "skilled", message: "Choose three skills for the Skilled feat.", key: f.source });
   }
+
+  const warlockOptions = entries.find((e) => e.id === "warlock")?.options ?? [];
 
   // ----- hit points -----
   const hpSources: Source[] = [];
@@ -387,6 +464,9 @@ export function derive(character: Character, content: Content): DerivedSheet {
     if (sorcerer?.subclass === "draconic-sorcery" && sorcerer.level >= 3) {
       acCandidates.push(sum([{ label: "Draconic Resilience", value: 10 }, { label: "Dexterity modifier", value: mods.dex }, { label: "Charisma modifier", value: mods.cha }]));
     }
+    if (warlockOptions.includes("armor-of-shadows")) {
+      acCandidates.push(sum([{ label: "Mage Armor (Armor of Shadows)", value: 13 }, { label: "Dexterity modifier", value: mods.dex }]));
+    }
   }
   const ac = acCandidates.reduce((best, c) => (c.value > best.value ? c : best));
   if (shield) {
@@ -419,7 +499,14 @@ export function derive(character: Character, content: Content): DerivedSheet {
   const rogue = entries.find((e) => e.id === "rogue");
   const sneak = rogue ? findClass(content, "rogue").progression[rogue.level - 1]?.columns["Sneak Attack"] : undefined;
   const martialArtsDie = monk ? findClass(content, "monk").progression[monk.level - 1]?.columns["Martial Arts"] ?? "1d6" : null;
-  const critRange = fighter?.subclass === "champion" && fighter.level >= 3 ? 19 : 20;
+  const critRange = fighter?.subclass === "champion" ? championCritRange(fighter.level) : 20;
+  let attacksPerActionValue: DerivedSheet["attacksPerAction"] = { count: 1, source: null };
+  for (const e of entries) {
+    const extra = attacksPerAction(e.id, e.level);
+    if (extra && extra.count > attacksPerActionValue.count) attacksPerActionValue = extra;
+  }
+  if (warlockOptions.includes("thirsting-blade") && attacksPerActionValue.count < 2) attacksPerActionValue = { count: 2, source: "Thirsting Blade (pact weapon only)" };
+  const radiantStrikes = Boolean(paladin && paladin.level >= 11);
 
   const weaponItems = character.inventory.filter((i) => i.equipped && i.ref?.kind === "weapon");
   for (const item of weaponItems) {
@@ -436,7 +523,9 @@ export function derive(character: Character, content: Content): DerivedSheet {
     if (isMonkWeapon && martialArtsDie && dieSize(martialArtsDie) > dieSize(weapon.damage)) die = martialArtsDie;
     const notes: string[] = [];
     if (!prof) notes.push("Not proficient: no Proficiency Bonus to hit.");
-    if (critRange < 20) notes.push(`Critical hit on ${critRange}–20 (Improved Critical).`);
+    if (critRange < 20) notes.push(`Critical hit on ${critRange}–20 (${critRange <= 18 ? "Superior Critical" : "Improved Critical"}).`);
+    if (radiantStrikes && weapon.kind === "melee") notes.push("Radiant Strikes: +1d8 Radiant damage on a hit.");
+    if (warlockOptions.includes("pact-of-the-blade") && mods.cha > mods[ability]) notes.push(`As your pact weapon, it can use Charisma: ${formatSigned(mods.cha + (prof ? proficiencyBonus : 0))} to hit.`);
     if (rageEntry && ability === "str") notes.push(`While raging: ${rageEntry.columns["Rage Damage"]} damage.`);
     if (sneak && (weapon.properties.includes("finesse") || weapon.kind === "ranged")) notes.push(`Sneak Attack: +${sneak} once per turn.`);
     if (featIds.has("great-weapon-fighting") && weapon.kind === "melee" && (weapon.properties.includes("two-handed") || weapon.properties.includes("versatile"))) {
@@ -531,6 +620,9 @@ export function derive(character: Character, content: Content): DerivedSheet {
       for (const [lvl, ids] of Object.entries(table)) if (e.level >= Number(lvl)) ids.forEach((id) => grant(id, `${sub!.name}`, false, false));
     }
   }
+  for (const [spellLevel, id] of Object.entries(character.spells.arcanum ?? {})) {
+    if (id) grant(id, `Mystic Arcanum (level ${spellLevel})`, true, false);
+  }
   for (const f of build.feats) {
     if (f.id === "magic-initiate" && f.magicInitiate) {
       f.magicInitiate.cantrips.forEach((c) => grant(c, "Magic Initiate", false, true));
@@ -546,7 +638,8 @@ export function derive(character: Character, content: Content): DerivedSheet {
   }
   resources.push(...speciesResources(species.id, level, proficiencyBonus));
   for (const g of grantedSpells.filter((g) => g.freeCast)) {
-    resources.push({ id: `free-cast:${g.id}`, name: `Free cast: ${g.id.replace(/-/g, " ")}`, max: species.id === "gnome" && g.id === "speak-with-animals" ? proficiencyBonus : 1, reset: "long", source: g.source });
+    const spellName = content.spells?.find((x) => x.id === g.id)?.name ?? g.id.replace(/-/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
+    resources.push({ id: `free-cast:${g.id}`, name: `Free cast: ${spellName}`, max: species.id === "gnome" && g.id === "speak-with-animals" ? proficiencyBonus : 1, reset: "long", source: g.source });
   }
 
   // ----- features -----
@@ -556,11 +649,17 @@ export function derive(character: Character, content: Content): DerivedSheet {
     features.push(...featuresFrom(cls, e.level));
     const sub = cls.subclasses.find((s) => s.id === e.subclass);
     if (sub) features.push(...sub.features.filter((f) => f.level <= e.level).map((f) => ({ source: sub.name, name: f.name, level: f.level, text: f.text })));
+    for (const id of e.options ?? []) {
+      for (const list of cls.options) {
+        const item = list.items.find((i) => i.id === id);
+        if (item) features.push({ source: list.name.replace(/ Options$/, ""), name: item.name, level: null, text: item.text });
+      }
+    }
   }
   for (const t of species.traits) features.push({ source: species.name, name: t.name, level: null, text: t.text });
   for (const f of build.feats) {
     const def = content.feats.find((d) => d.id === f.id);
-    if (def) features.push({ source: f.source === "background" ? `${background.name} background` : "Feat", name: def.name, level: null, text: def.text });
+    if (def) features.push({ source: f.source === "background" ? `${background.name} background` : def.category === "epic-boon" ? "Epic Boon" : "Feat", name: def.name, level: null, text: def.text });
   }
 
   // ----- proficiencies, resistances -----
@@ -568,7 +667,8 @@ export function derive(character: Character, content: Content): DerivedSheet {
   let weaponsText = primaryClass?.weaponText ?? "";
   if (order === "protector" || order === "warden") weaponsText = `${weaponsText}; Martial weapons (${order === "protector" ? "Protector" : "Warden"})`;
   const toolList = [background.tool, primaryClass?.toolText ?? null, build.toolNotes || null].filter(Boolean).join("; ");
-  const resistances = [SPECIES_RESISTANCE[species.id], speciesOption?.resistance].filter((r): r is string => Boolean(r));
+  const affinity = sorcerer?.subclass === "draconic-sorcery" && sorcerer.level >= 6 ? sorcerer.choices.elementalAffinity : undefined;
+  const resistances = [...new Set([SPECIES_RESISTANCE[species.id], speciesOption?.resistance, affinity].filter((r): r is string => Boolean(r)))];
 
   const classSummary = entries
     .map((e) => {
@@ -592,6 +692,7 @@ export function derive(character: Character, content: Content): DerivedSheet {
       investigation: 10 + skills.investigation.total.value,
     },
     ac,
+    attacksPerAction: attacksPerActionValue,
     initiative: sum(initSources),
     initiativeAdvantage,
     speed: sum(speedSources),
@@ -620,4 +721,8 @@ function dieSize(notation: string): number {
 function withMod(die: string, mod: number): string {
   if (mod === 0) return die;
   return `${die}${mod > 0 ? "+" : "-"}${Math.abs(mod)}`;
+}
+
+function formatSigned(n: number): string {
+  return n >= 0 ? `+${n}` : `${n}`;
 }

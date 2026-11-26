@@ -1,7 +1,7 @@
-import { derive, exportCharacter, findClass, levelUp, type Character } from "@mimicbox/ruleset-dnd5e";
+import { classOptionRule, derive, exportCharacter, findClass, levelUp, type Character } from "@mimicbox/ruleset-dnd5e";
 import { useState } from "react";
 import { go } from "../../App";
-import { PendingChoices } from "../../components/editors";
+import { ClassOptionsEditor, PendingChoices } from "../../components/editors";
 import { Markdown } from "../../lib/markdown";
 import { content, useApp } from "../../lib/state";
 import { portraitFromFile } from "../../lib/edit";
@@ -18,7 +18,9 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
   const { vault, refresh, toast } = useApp();
   const [levelling, setLevelling] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editingOptions, setEditingOptions] = useState(false);
   const entry = character.build.classes[0]!;
+  const optionRule = classOptionRule(entry.id, entry.level, findClass(content, entry.id).progression[entry.level - 1]?.columns ?? {});
 
   function download() {
     const file = exportCharacter(character, content);
@@ -65,7 +67,17 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
             Level up
           </button>
         </div>
+        {optionRule && optionRule.count > 0 && (
+          <button className="btn" style={{ marginTop: 10 }} onClick={() => setEditingOptions(true)}>
+            Change {optionRule.label}
+          </button>
+        )}
       </section>
+      {editingOptions && optionRule && (
+        <Drawer title={optionRule.label} onClose={() => setEditingOptions(false)}>
+          <ClassOptionsEditor character={character} sheet={sheet} update={update} />
+        </Drawer>
+      )}
 
       <section className="section">
         <h2>Features and traits</h2>

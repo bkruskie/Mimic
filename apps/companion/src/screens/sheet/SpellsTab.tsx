@@ -1,6 +1,7 @@
 import { formatModifier } from "@mimicbox/dice";
 import { ABILITY_NAMES, restoreSlot, spendSlot, type SpellDef } from "@mimicbox/ruleset-dnd5e";
 import { useState } from "react";
+import { MysticArcanumEditor, arcanumLevels } from "../../components/editors";
 import { ClassSpellsEditor, SpellDetail, spellTags, useSpells } from "../../components/spells";
 import { Drawer, type SheetProps } from "../SheetScreen";
 
@@ -148,6 +149,9 @@ export function SpellsTab({ character, sheet, update, ask }: SheetProps) {
       {editing && (
         <Drawer title="Choose spells" onClose={() => setEditing(false)}>
           <ClassSpellsEditor character={character} sheet={sheet} update={update} />
+          {arcanumLevels(character).map((level) => (
+            <MysticArcanumEditor key={level} character={character} update={update} spellLevel={level} />
+          ))}
         </Drawer>
       )}
     </>

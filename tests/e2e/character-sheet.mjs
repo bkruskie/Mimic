@@ -252,6 +252,60 @@ try {
   check((await page.locator('.pip[aria-pressed="true"]').count()) === 1, "spending a slot marks it used");
   await shot("sheet-spells-wizard");
 
+  // ----- High levels: Dwarf Warlock (Soldier) from 1 to 11 -----
+  await page.getByRole("button", { name: "Back to the vault" }).click();
+  await tap("button", "Build a character");
+  await page.getByRole("button", { name: /^Warlock/ }).click();
+  await page.getByRole("button", { name: /^Next: Species/ }).click();
+  await page.getByRole("button", { name: /^Dwarf/ }).click();
+  await page.getByRole("button", { name: /^Next: Background/ }).click();
+  await page.getByRole("button", { name: /^Soldier/ }).click();
+  await page.getByRole("group", { name: "Plus two" }).getByRole("button", { name: "Dexterity" }).click();
+  await page.getByRole("group", { name: "Plus one" }).getByRole("button", { name: "Constitution" }).click();
+  await page.getByRole("button", { name: /^Next: Abilities/ }).click();
+  await page.getByRole("button", { name: /^Next: Class options/ }).click();
+  const wlSkills = page.getByRole("group", { name: "Class skills" });
+  await wlSkills.getByRole("button", { name: "Arcana" }).click();
+  await wlSkills.getByRole("button", { name: "Deception" }).click();
+  check(await page.getByRole("button", { name: /^Thirsting Blade/ }).isDisabled(), "Thirsting Blade is unavailable at level 1");
+  await page.getByRole("button", { name: /^Armor of Shadows/ }).click();
+  await shot("builder-invocations");
+  await page.getByRole("button", { name: /^Next: Equipment/ }).click();
+  await page.getByRole("button", { name: /^Option A/ }).nth(0).click();
+  await page.getByRole("button", { name: /^Option A/ }).nth(1).click();
+  await page.getByRole("button", { name: /^Next: Spells/ }).click();
+  await page.getByRole("heading", { name: "Warlock cantrips" }).waitFor();
+  await pick("Warlock cantrips", 2);
+  await pick("Prepared Warlock spells", 2);
+  await page.getByRole("button", { name: /^Next: Name and finish/ }).click();
+  await page.getByLabel("Character name").fill("Brask Coalhand");
+  await page.getByText("Every choice is made.").waitFor();
+  check(true, "warlock builder accepts one invocation at level 1");
+  await tap("button", "Save to vault");
+  await page.getByRole("heading", { name: "Brask Coalhand" }).waitFor();
+  await tap("button", "Notes");
+  for (let next = 2; next <= 11; next++) {
+    await tap("button", "Level up");
+    await page.getByRole("button", { name: `Reach level ${next}` }).click();
+    await page.waitForTimeout(150);
+  }
+  check(/Warlock 11/.test(await page.locator(".sheet-top").innerText()), "the Warlock reaches level 11");
+  const todo = await page.locator("main").innerText();
+  check(/Choose 6 more Eldritch Invocations/.test(todo), "level 11 asks for 6 more invocations (7 in all)");
+  check(/Choose a level 6 spell for Mystic Arcanum/.test(todo), "level 11 asks for a level 6 Mystic Arcanum");
+  check(await page.getByRole("button", { name: /^Thirsting Blade/ }).isDisabled(), "Thirsting Blade waits for Pact of the Blade");
+  await page.getByRole("button", { name: /^Pact of the Blade/ }).click();
+  check(!(await page.getByRole("button", { name: /^Thirsting Blade/ }).isDisabled()), "Pact of the Blade unlocks Thirsting Blade");
+  await page.getByRole("button", { name: /^Thirsting Blade/ }).click();
+  await pick("Mystic Arcanum: level 6 spell", 1);
+  await page.waitForTimeout(200);
+  check(!/Mystic Arcanum/.test(await page.locator("main").innerText().then((t) => t.split("Features and traits")[0])), "choosing the arcanum clears it from To do");
+  await shot("sheet-warlock-11");
+  await tap("button", "Actions");
+  check(/The Attack action makes 2 attacks \(Thirsting Blade/.test(await page.locator("main").innerText()), "Thirsting Blade gives two attacks");
+  check(/Free cast: /.test(await page.locator("main").innerText()), "the arcanum spell has a free cast per Long Rest");
+  await shot("sheet-warlock-actions");
+
   check(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(" | ")}` : ""}`);
   console.log(`\nAll checks passed. Screenshots in ${SHOTS}`);
 } catch (e) {

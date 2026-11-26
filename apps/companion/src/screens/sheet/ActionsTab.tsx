@@ -18,6 +18,11 @@ export function ActionsTab({ character, sheet, update, ask }: SheetProps) {
     <>
       <section className="section">
         <h2>Attacks</h2>
+        {sheet.attacksPerAction.count > 1 && (
+          <p className="muted small" style={{ margin: "4px 0 8px" }}>
+            The Attack action makes {sheet.attacksPerAction.count} attacks ({sheet.attacksPerAction.source}).
+          </p>
+        )}
         <ul className="rows">
           {sheet.attacks.map((a) => (
             <li key={a.id} className="attack">

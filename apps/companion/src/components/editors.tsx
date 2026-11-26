@@ -6,14 +6,20 @@ import {
   ABILITIES,
   ABILITY_NAMES,
   CLASS_CHOICES,
+  EPIC_BOON_LEVEL,
+  FEAT_ABILITY_INCREASE,
+  MYSTIC_ARCANUM,
   SKILLS,
   SKILL_IDS,
   SPECIES_CHOICES,
   SUBCLASS_CHOICES,
+  classOptionRule,
   expertiseCount,
   findBackground,
   findClass,
   findSpecies,
+  optionLevelPrerequisite,
+  optionRequires,
   weaponMasteryCount,
   type Ability,
   type Character,
@@ -25,7 +31,7 @@ import type { ReactNode } from "react";
 import { Markdown } from "../lib/markdown";
 import { content } from "../lib/state";
 import { patchFeatAt, setFeatAt, toggle, updateClassEntry } from "../lib/edit";
-import { MagicInitiateEditor } from "./spells";
+import { MagicInitiateEditor, SpellChooser } from "./spells";
 
 export type Update = (fn: (c: Character) => Character) => void;
 
@@ -354,27 +360,38 @@ export function SubclassEditor({ character, update }: EditorProps) {
   );
 }
 
-export function AsiEditor({ character, sheet, update, level }: EditorProps & { level: number }) {
+export function AsiEditor({ character, sheet, update, level, boon = false }: EditorProps & { level: number; boon?: boolean }) {
   const entry = character.build.classes[0]!;
-  const source = `asi:${entry.id}:${level}`;
+  const source = `${boon ? "boon" : "asi"}:${entry.id}:${level}`;
   const current = character.build.feats.find((f) => f.source === source);
-  const isAsi = !current || current.id === "ability-score-improvement";
+  const isAsi = boon ? current?.id === "ability-score-improvement" : !current || current.id === "ability-score-improvement";
   const inc = current?.abilityIncreases ?? {};
   const used = Object.values(inc).reduce((t, v) => t + (v ?? 0), 0);
-  const general = content.feats.filter((f) => f.category === "general" && f.id !== "ability-score-improvement");
+  const choices = content.feats.filter(
+    (f) => (f.category === "general" && f.id !== "ability-score-improvement") || (boon && f.category === "epic-boon"),
+  );
+  const featRule = current ? FEAT_ABILITY_INCREASE[current.id] : undefined;
   const bump = (a: Ability, delta: number) => {
     const next = { ...inc, [a]: Math.max(0, Math.min(2, (inc[a] ?? 0) + delta)) };
     const total = Object.values(next).reduce((t, v) => t + (v ?? 0), 0);
     if (total > 2) return;
     update((c) => setFeatAt(c, source, { id: "ability-score-improvement", abilityIncreases: next }));
   };
+  const scoreBefore = (a: Ability) => sheet.abilities[a].score.value - (inc[a] ?? 0);
   return (
-    <Block title={`Level ${level}: Ability Score Improvement`} hint="Increase one score by 2, or two scores by 1 (to a maximum of 20), or take a General feat instead.">
+    <Block
+      title={boon ? `Level ${level}: Epic Boon` : `Level ${level}: Ability Score Improvement`}
+      hint={
+        boon
+          ? "Choose an Epic Boon feat, or another feat you qualify for. Epic Boons raise a score by 1, to a maximum of 30."
+          : "Increase one score by 2, or two scores by 1 (to a maximum of 20), or take a General feat instead."
+      }
+    >
       <div className="row" style={{ marginBottom: 10 }}>
         <button type="button" className="chip" aria-pressed={isAsi} onClick={() => update((c) => setFeatAt(c, source, { id: "ability-score-improvement", abilityIncreases: {} }))}>
           Ability scores
         </button>
-        {general.map((f) => (
+        {choices.map((f) => (
           <button key={f.id} type="button" className="chip" aria-pressed={current?.id === f.id} onClick={() => update((c) => setFeatAt(c, source, { id: f.id }))}>
             {f.name}
           </button>
@@ -401,17 +418,112 @@ export function AsiEditor({ character, sheet, update, level }: EditorProps & { l
           ))}
           <p className="muted small">{2 - used} point{2 - used === 1 ? "" : "s"} left.</p>
         </div>
-      ) : (
-        <Markdown text={content.feats.find((f) => f.id === current!.id)?.text ?? ""} />
-      )}
+      ) : current ? (
+        <>
+          {featRule && (
+            <div style={{ marginBottom: 10 }}>
+              <p className="small muted" style={{ marginBottom: 4 }}>
+                Raise one score by 1 (maximum {featRule.max})
+              </p>
+              <Chips
+                label="Ability to raise"
+                options={(featRule.abilities === "any" ? [...ABILITIES] : featRule.abilities).map((a) => ({ id: a, name: `${ABILITY_NAMES[a]} ${scoreBefore(a)}` }))}
+                selected={ABILITIES.filter((a) => (inc[a] ?? 0) > 0)}
+                disabled={(a) => scoreBefore(a) >= featRule.max}
+                onToggle={(a) => update((c) => patchFeatAt(c, source, { abilityIncreases: { [a]: 1 } }))}
+              />
+            </div>
+          )}
+          <Markdown text={content.feats.find((f) => f.id === current.id)?.text ?? ""} />
+        </>
+      ) : null}
     </Block>
   );
+}
+
+export function ClassOptionsEditor({ character, update }: EditorProps) {
+  const entry = character.build.classes[0]!;
+  const cls = findClass(content, entry.id);
+  const rule = classOptionRule(entry.id, entry.level, cls.progression[entry.level - 1]?.columns ?? {});
+  if (!rule || rule.count === 0) return null;
+  const list = cls.options.find((o) => o.id === rule.listId);
+  if (!list) return null;
+  const chosen = entry.options ?? [];
+  const full = chosen.length >= rule.count;
+  return (
+    <Block title={rule.label} hint={`Choose ${rule.count} (${chosen.length} chosen). Options you don't meet the level or invocation prerequisite for are unavailable.`}>
+      <div className="choice-grid">
+        {list.items.map((item) => {
+          const need = optionLevelPrerequisite(item.text);
+          const requires = optionRequires(item.text);
+          const picked = chosen.includes(item.id);
+          const blocked = need > entry.level || (requires !== null && !chosen.includes(requires));
+          const prereq = /\*Prerequisite: ([^*]+)\*/.exec(item.text)?.[1];
+          return (
+            <button
+              key={item.id}
+              type="button"
+              className="choice"
+              aria-pressed={picked}
+              disabled={!picked && (blocked || full)}
+              onClick={() =>
+                update((c) => {
+                  // Dropping an invocation also drops the ones that need it.
+                  let next = picked ? chosen.filter((id) => id !== item.id) : [...chosen, item.id];
+                  if (picked) next = next.filter((id) => optionRequires(list.items.find((i) => i.id === id)?.text ?? "") !== item.id);
+                  return updateClassEntry(c, { options: next });
+                })
+              }
+            >
+              <strong>{item.name}</strong>
+              {prereq && <small className="prereq">Needs {prereq.replace(/ Warlock/g, "").replace(/^Level (\d+)\+/, "level $1")}</small>}
+              <small>{firstSentence(item.text.replace(/\*Prerequisite:[^*]+\*/, ""))}</small>
+            </button>
+          );
+        })}
+      </div>
+    </Block>
+  );
+}
+
+export function MysticArcanumEditor({ character, update, spellLevel }: { character: Character; update: Update; spellLevel: number }) {
+  const cls = findClass(content, "warlock");
+  const current = character.spells.arcanum?.[String(spellLevel)];
+  return (
+    <SpellChooser
+      title={`Mystic Arcanum: level ${spellLevel} spell`}
+      ids={cls.spellList[String(spellLevel)] ?? []}
+      selected={current ? [current] : []}
+      max={1}
+      onToggle={(id) =>
+        update((c) => {
+          const arcanum = { ...(c.spells.arcanum ?? {}) };
+          if (arcanum[String(spellLevel)] === id) delete arcanum[String(spellLevel)];
+          else arcanum[String(spellLevel)] = id;
+          return { ...c, spells: { ...c.spells, arcanum } };
+        })
+      }
+    />
+  );
+}
+
+/** Mystic Arcanum levels the Warlock has reached. */
+export function arcanumLevels(character: Character): number[] {
+  const entry = character.build.classes.find((e) => e.id === "warlock");
+  return entry ? Object.entries(MYSTIC_ARCANUM).filter(([lvl]) => entry.level >= Number(lvl)).map(([, sl]) => sl) : [];
 }
 
 /** Shows an editor for each open choice, for the sheet's "To do" card after a level-up. */
 export function PendingChoices({ character, sheet, update }: EditorProps) {
   const kinds = new Set(sheet.pending.map((p) => p.kind));
   const asis = sheet.pending.filter((p): p is PendingChoice & { level: number } => p.kind === "asi" && p.level !== undefined);
+  // A feat that raises an ability needs its ASI or boon editor back to pick the ability.
+  const featAbility = sheet.pending
+    .filter((p) => p.kind === "feat-ability" && p.key)
+    .map((p) => ({ boon: p.key!.startsWith("boon:"), level: Number(p.key!.split(":").pop()) }))
+    .filter((f) => !Number.isNaN(f.level));
+  const asiLevels = [...new Set([...asis.map((p) => p.level), ...featAbility.filter((f) => !f.boon).map((f) => f.level)])];
+  const boon = kinds.has("epic-boon") || featAbility.some((f) => f.boon);
   const props = { character, sheet, update };
   return (
     <>
@@ -423,9 +535,16 @@ export function PendingChoices({ character, sheet, update }: EditorProps) {
       {kinds.has("expertise") && <ExpertiseEditor {...props} />}
       {kinds.has("fighting-style") && <FightingStyleEditor {...props} />}
       {kinds.has("weapon-mastery") && <WeaponMasteryEditor {...props} />}
-      {asis.map((p) => (
-        <AsiEditor key={p.level} {...props} level={p.level} />
+      {kinds.has("class-options") && <ClassOptionsEditor {...props} />}
+      {asiLevels.map((level) => (
+        <AsiEditor key={level} {...props} level={level} />
       ))}
+      {boon && <AsiEditor {...props} level={EPIC_BOON_LEVEL} boon />}
+      {sheet.pending
+        .filter((p) => p.kind === "mystic-arcanum" && p.level)
+        .map((p) => (
+          <MysticArcanumEditor key={p.level} character={character} update={update} spellLevel={p.level!} />
+        ))}
       {sheet.pending
         .filter((p) => p.kind === "magic-initiate" && p.key)
         .map((p) => (

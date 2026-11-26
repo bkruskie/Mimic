@@ -872,7 +872,12 @@ details.feature[open] {
   font-weight: 600;
 }
 .choice small {
+  display: block;
   color: var(--bone-dim);
+}
+.choice small.prereq {
+  color: var(--brass);
+  margin-bottom: 4px;
 }
 .builder-footer {
   position: fixed;

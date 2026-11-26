@@ -236,9 +236,11 @@ export interface ClassEntry {
   expertise: SkillId[];
   /** Rolled hit points for levels 2 and up, by index (level 2 is index 0). Missing entries use the fixed average. */
   hitPointRolls: (number | null)[];
-  /** Named class choices: "divineOrder", "primalOrder", "landType", "draconicAncestry". */
+  /** Named class choices: "divineOrder", "primalOrder", "landType", "elementalAffinity". */
   choices: Record<string, string>;
   weaponMasteries: string[];
+  /** Picks from the class's option lists: Eldritch Invocations, Metamagic. Missing on older files. */
+  options?: string[];
 }
 
 export interface InventoryItem {
@@ -310,6 +312,8 @@ export interface Character {
   spells: {
     cantrips: string[];
     prepared: string[];
+    /** Warlock Mystic Arcanum: spell level ("6" to "9") to spell id. Missing on older files. */
+    arcanum?: Record<string, string>;
   };
   inventory: InventoryItem[];
   currency: Currency;
