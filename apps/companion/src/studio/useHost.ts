@@ -4,12 +4,14 @@
  */
 import { newId, srdContent as content } from "@mimicbox/ruleset-dnd5e";
 import {
+  PROTOCOL_VERSION,
   displayChannelName,
   displayView,
   encodeInvite,
   handlePlayerMessage,
   openLink,
   playerView,
+  type Effect,
   type TableLink,
 } from "@mimicbox/table";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -116,5 +118,12 @@ export function useHost(initial: StudioCampaign) {
   /** Applies a DM action to the newest campaign state. */
   const update = useCallback((fn: (c: StudioCampaign) => StudioCampaign) => setCampaign(fn(ref.current)), [setCampaign]);
 
-  return { campaign, update, status, connected, inviteUrl };
+  /** Sends damage, healing or a condition to one player's sheet. Only reaches players who are connected. */
+  const sendEffect = useCallback((userId: string, effect: Effect) => {
+    if (!connectedRef.current.has(userId)) return false;
+    link.current?.send({ t: "effect", v: PROTOCOL_VERSION, effectId: newId(), effect }, userId);
+    return true;
+  }, []);
+
+  return { campaign, update, status, connected, inviteUrl, sendEffect };
 }

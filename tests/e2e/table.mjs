@@ -124,9 +124,9 @@ try {
   await eventually(async () => (await dm.page.getByRole("list", { name: "Rolls" }).innerText()).includes("Wren Ashdown (Alice): Athletics"), `Alice's Athletics roll (${aliceRoll}) appears in the DM's log`);
 
   // ----- Secret and public DM rolls -----
-  await dm.page.getByLabel("For").fill("Ambush");
+  await dm.page.getByLabel("For", { exact: true }).fill("Ambush");
   await dm.page.getByRole("button", { name: "Roll in secret" }).click();
-  await dm.page.getByLabel("For").fill("Ogre club");
+  await dm.page.getByLabel("For", { exact: true }).fill("Ogre club");
   await dm.page.getByLabel("Dice").fill("2d8+4");
   await dm.page.getByRole("button", { name: "Roll for the table" }).click();
   check(/Ambush\s*Only you/.test(await dm.page.getByRole("list", { name: "Rolls" }).innerText()), "the DM's secret roll is marked Only you");
@@ -209,6 +209,22 @@ try {
   await dm.page.getByRole("region", { name: "Combat" }).getByRole("button", { name: "End combat" }).click();
   await dm.page.getByRole("button", { name: "End combat" }).first().click();
   await eventually(async () => (await alice.page.locator(".combat-banner").count()) === 0, "ending combat clears it from Alice's sheet");
+
+  // ----- The DM changes a player's sheet: damage, healing, conditions -----
+  await dm.page.getByLabel("Amount for Wren Ashdown").fill("4");
+  await dm.page.getByRole("group", { name: "Change Wren Ashdown's hit points" }).getByRole("button", { name: "Damage" }).click();
+  await eventually(async () => (await alice.page.getByText("The DM dealt you 4 damage.").count()) > 0, "Alice is told the DM dealt her 4 damage");
+  await eventually(async () => /2\s*\/\s*12/.test(await alice.page.locator(".hp-vital").innerText()), "her sheet drops from 6 to 2 hit points");
+  await eventually(async () => /2\s*\/\s*12/.test(await dm.page.locator(".member", { hasText: "Wren Ashdown" }).innerText()), "and the DM's page follows");
+  await dm.page.locator(".member", { hasText: "Wren Ashdown" }).getByText("Conditions").click();
+  await dm.page.getByRole("group", { name: "Wren Ashdown's conditions" }).getByRole("button", { name: "Prone" }).click();
+  await eventually(async () => /Prone/.test(await alice.page.locator(".sheet-top").innerText()), "a condition from the DM shows on Alice's sheet");
+  await dm.page.getByLabel("Amount for Wren Ashdown").fill("4");
+  await dm.page.getByRole("group", { name: "Change Wren Ashdown's hit points" }).getByRole("button", { name: "Heal" }).click();
+  await eventually(async () => /6\s*\/\s*12/.test(await alice.page.locator(".hp-vital").innerText()), "healing from the DM brings her back to 6");
+  await shot(alice.page, "alice-dm-effects");
+  await dm.page.getByRole("group", { name: "Wren Ashdown's conditions" }).getByRole("button", { name: "Prone" }).click();
+  await eventually(async () => !/Prone/.test(await alice.page.locator(".sheet-top").innerText()), "and clearing it removes it");
 
   // ----- Replacing the link keeps out anyone holding the old one -----
   await dm.page.getByRole("button", { name: "Replace link" }).click();

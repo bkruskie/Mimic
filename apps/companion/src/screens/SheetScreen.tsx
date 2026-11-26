@@ -5,6 +5,7 @@ import { go } from "../App";
 import { BackIcon, BagIcon, CloseIcon, D20Icon, ScrollIcon, SparkIcon, StarIcon, SwordIcon } from "../lib/icons";
 import { content, useCharacter, useRoller, type ShownRoll } from "../lib/state";
 import { useTable } from "../lib/table";
+import { applyEffect } from "@mimicbox/table";
 import { Markdown } from "../lib/markdown";
 import { AbilitiesTab } from "./sheet/AbilitiesTab";
 import { ActionsTab } from "./sheet/ActionsTab";
@@ -57,6 +58,13 @@ export function SheetScreen({ id }: { id: string }) {
   const table = useTable();
   const atTable = table.seat?.characterId === id;
   const shareCharacter = table.shareCharacter;
+  const setEffectHandler = table.setEffectHandler;
+  // Damage, healing and conditions from the DM land in this sheet's own state while it's open.
+  useEffect(() => {
+    if (!atTable) return;
+    setEffectHandler((e) => update((c) => applyEffect(c, content, e)));
+    return () => setEffectHandler(null);
+  }, [atTable, setEffectHandler, update]);
 
   // While at a table, the DM's copy follows every change, a moment after it is made.
   useEffect(() => {
