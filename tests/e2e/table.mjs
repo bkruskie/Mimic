@@ -174,6 +174,42 @@ try {
   await dm.page.getByRole("article", { name: "The ferryman's letter" }).getByRole("button", { name: "Hide again" }).click();
   await eventually(async () => !/ferryman/.test(await display.locator("main").innerText()), "hiding it again takes it off the display");
 
+  // ----- Combat: initiative from the sheet, hidden creatures, turns -----
+  await dm.page.getByRole("button", { name: "Start combat" }).click();
+  await alice.page.getByRole("button", { name: "Roll initiative" }).waitFor({ timeout: 20000 });
+  check(true, "Alice is asked to roll initiative");
+  await alice.page.getByRole("button", { name: "Roll initiative" }).click();
+  await alice.page.locator(".roll-result .total").waitFor();
+  const aliceInit = Number(await alice.page.locator(".roll-result .total").innerText());
+  await alice.page.keyboard.press("Escape");
+  await eventually(async () => (await dm.page.getByLabel("Wren Ashdown initiative").inputValue()) === String(aliceInit), `Alice's initiative (${aliceInit}) lands in the DM's order`);
+  const addCreature = async (name, bonus, hp, hiddenCreature) => {
+    await dm.page.getByLabel("Creature").fill(name);
+    await dm.page.getByLabel("Init bonus").fill(String(bonus));
+    await dm.page.getByLabel("HP", { exact: true }).fill(String(hp));
+    if (hiddenCreature) await dm.page.getByRole("checkbox", { name: "Hidden" }).check();
+    await dm.page.getByRole("button", { name: "Add and roll" }).click();
+    if (hiddenCreature) await dm.page.getByRole("checkbox", { name: "Hidden" }).uncheck();
+  };
+  await addCreature("Ogre", -1, 59, false);
+  await addCreature("Shadow assassin", 30, 30, true);
+  await dm.page.getByRole("button", { name: "First turn" }).click();
+  await eventually(async () => /Round 1\./.test(await alice.page.locator(".combat-banner").innerText()), "the fight starts on Alice's sheet");
+  check(!/assassin/i.test(await alice.page.locator(".combat-banner").innerText()), "the hidden assassin's turn shows no name to Alice");
+  await eventually(async () => /Round 1/.test(await display.locator("main").innerText()), "the display shows the initiative order");
+  check(!/assassin/i.test(await display.locator("main").innerText()) && !/59/.test(await display.locator("main").innerText()), "without the hidden assassin or creature hit points");
+  for (let i = 0; i < 3 && !/Your turn/.test(await alice.page.locator(".combat-banner").innerText()); i++) {
+    await dm.page.getByRole("button", { name: "Next turn" }).click();
+    await alice.page.waitForTimeout(800);
+  }
+  check(/Your turn\. Round 1\./.test(await alice.page.locator(".combat-banner").innerText()), "Alice's sheet tells her when it's her turn");
+  await shot(alice.page, "alice-your-turn");
+  await shot(dm.page, "dm-combat");
+  await shot(display, "display-combat");
+  await dm.page.getByRole("region", { name: "Combat" }).getByRole("button", { name: "End combat" }).click();
+  await dm.page.getByRole("button", { name: "End combat" }).first().click();
+  await eventually(async () => (await alice.page.locator(".combat-banner").count()) === 0, "ending combat clears it from Alice's sheet");
+
   // ----- Replacing the link keeps out anyone holding the old one -----
   await dm.page.getByRole("button", { name: "Replace link" }).click();
   await eventually(async () => (await dm.page.getByRole("textbox", { name: "Invite link" }).inputValue()) !== invite, "the DM replaces the invite link");

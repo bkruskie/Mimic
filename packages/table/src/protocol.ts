@@ -5,6 +5,8 @@
 
 export const PROTOCOL_VERSION = 1 as const;
 
+import type { PublicCombat } from "./combat.js";
+
 /** Largest message accepted from a player: a character file with a small portrait fits comfortably. */
 export const MAX_MESSAGE_BYTES = 256 * 1024;
 
@@ -56,7 +58,8 @@ export interface PartyMember {
 export type PlayerMessage =
   | { t: "hello"; v: number; invite: string; playerName: string }
   | { t: "character"; v: number; commandId: string; character: unknown }
-  | { t: "roll"; v: number; commandId: string; roll: Pick<SharedRoll, "characterName" | "label" | "expression" | "total" | "breakdown" | "flag"> };
+  | { t: "roll"; v: number; commandId: string; roll: Pick<SharedRoll, "characterName" | "label" | "expression" | "total" | "breakdown" | "flag"> }
+  | { t: "initiative"; v: number; commandId: string; total: number };
 
 export type HostMessage =
   | { t: "welcome"; v: number; campaign: string; memberId: string }
@@ -64,6 +67,7 @@ export type HostMessage =
   | { t: "party"; v: number; members: PartyMember[] }
   | { t: "rolls"; v: number; rolls: SharedRoll[] }
   | { t: "handouts"; v: number; handouts: PublicHandout[] }
+  | { t: "combat"; v: number; combat: PublicCombat | null }
   | { t: "ack"; v: number; commandId: string };
 
 /** What a table display receives. It never sends game commands. */
@@ -75,6 +79,7 @@ export interface DisplayView {
   rolls: SharedRoll[];
   /** The most recently revealed handout, shown large on the table. */
   spotlight: PublicHandout | null;
+  combat: PublicCombat | null;
 }
 
 const isRecord = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);
@@ -109,6 +114,10 @@ export function parsePlayerMessage(raw: unknown): PlayerMessage | null {
         roll: { characterName: r.characterName, label: r.label, expression: r.expression, total: r.total, breakdown: r.breakdown, ...(flag ? { flag } : {}) },
       };
     }
+    case "initiative":
+      return id(raw.commandId) && typeof raw.total === "number" && Number.isInteger(raw.total) && Math.abs(raw.total) <= 100
+        ? { t: "initiative", v: raw.v, commandId: raw.commandId, total: raw.total }
+        : null;
     default:
       return null;
   }
@@ -128,6 +137,8 @@ export function parseHostMessage(raw: unknown): HostMessage | null {
       return Array.isArray(raw.rolls) ? (raw as HostMessage) : null;
     case "handouts":
       return Array.isArray(raw.handouts) ? (raw as HostMessage) : null;
+    case "combat":
+      return raw.combat === null || (isRecord(raw.combat) && Array.isArray(raw.combat.order)) ? (raw as HostMessage) : null;
     case "ack":
       return id(raw.commandId) ? (raw as HostMessage) : null;
     default:

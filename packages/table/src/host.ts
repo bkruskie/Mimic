@@ -3,6 +3,7 @@
  * keep secrets and stop repeated actions can be tested without a network. The app wires them to a live link.
  */
 import { CharacterImportError, derive, importCharacter, type Character, type Content } from "@mimicbox/ruleset-dnd5e";
+import { publicCombat, setMemberInitiative, type Combat } from "./combat.js";
 import {
   PROTOCOL_VERSION,
   parsePlayerMessage,
@@ -51,6 +52,8 @@ export interface HostCampaign {
   rolls: SharedRoll[];
   /** Missing on campaigns saved before handouts. */
   handouts?: Handout[];
+  /** The fight in progress, if any. */
+  combat?: Combat | null;
   /** Recently applied command ids, per member. */
   seen: Record<string, string[]>;
   createdAt: string;
@@ -119,6 +122,13 @@ export function handlePlayerMessage(campaign: HostCampaign, from: string, raw: u
     }
     const next = { ...campaign, members: { ...campaign.members, [from]: { ...member, character } } };
     return { campaign: touch(remember(next, from, m.commandId)), replies: [{ to: from, msg: msg({ t: "ack", commandId: m.commandId }) }], changed: true };
+  }
+
+  if (m.t === "initiative") {
+    const next = setMemberInitiative(campaign, from, m.total);
+    const acked = { to: from, msg: msg({ t: "ack", commandId: m.commandId }) };
+    if (!next) return { campaign: touch(remember(campaign, from, m.commandId)), replies: [acked], changed: false };
+    return { campaign: touch(remember(next, from, m.commandId)), replies: [acked], changed: true };
   }
 
   // A shared roll: players' shared rolls are public at the table.
@@ -203,6 +213,7 @@ export function playerView(campaign: HostCampaign, connected: ReadonlySet<string
     msg({ t: "party", members: party(campaign, connected, content) }),
     msg({ t: "rolls", rolls: campaign.rolls.filter((r) => r.visibility === "public").slice(-30) }),
     msg({ t: "handouts", handouts: revealedHandouts(campaign) }),
+    msg({ t: "combat", combat: publicCombat(campaign) }),
   ];
 }
 
@@ -215,6 +226,7 @@ export function displayView(campaign: HostCampaign, connected: ReadonlySet<strin
     members: party(campaign, connected, content),
     rolls: campaign.rolls.filter((r) => r.visibility === "public").slice(-12),
     spotlight: revealedHandouts(campaign).at(-1) ?? null,
+    combat: publicCombat(campaign),
   };
 }
 

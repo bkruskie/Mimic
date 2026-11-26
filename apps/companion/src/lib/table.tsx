@@ -12,6 +12,7 @@ import {
   type Invite,
   type PartyMember,
   type PlayerMessage,
+  type PublicCombat,
   type PublicHandout,
   type SharedRoll,
   type TableLink,
@@ -38,6 +39,10 @@ interface TableState {
   rolls: SharedRoll[];
   /** Handouts the DM has shown to the party. */
   handouts: PublicHandout[];
+  /** The fight in progress, as players see it. */
+  combat: PublicCombat | null;
+  /** This device's identity in the game, from the DM's welcome. */
+  memberId: string | null;
   join: (seat: Seat) => Promise<void>;
   leave: () => Promise<void>;
   shareCharacter: (c: Character) => void;
@@ -52,6 +57,8 @@ type Command = Extract<PlayerMessage, { commandId: string }>;
 export function TableProvider({ children }: { children: ReactNode }) {
   const { vault, toast } = useApp();
   const [handouts, setHandouts] = useState<PublicHandout[]>([]);
+  const [combat, setCombat] = useState<PublicCombat | null>(null);
+  const [memberId, setMemberId] = useState<string | null>(null);
   // Handouts already seen on this connection, so only new reveals are announced.
   const knownHandouts = useRef<Set<string> | null>(null);
   const [seat, setSeat] = useState<Seat | null>(null);
@@ -128,6 +135,7 @@ export function TableProvider({ children }: { children: ReactNode }) {
         if (!m) return;
         if (m.t === "welcome") {
           welcomed.current = true;
+          setMemberId(m.memberId);
           setStatus("connected");
           setProblem(null);
           // Bring the newest copy of the character, then resend anything the DM hasn't confirmed.
@@ -140,6 +148,7 @@ export function TableProvider({ children }: { children: ReactNode }) {
           setProblem(m.reason);
         } else if (m.t === "party") setParty(m.members);
         else if (m.t === "rolls") setRolls(m.rolls);
+        else if (m.t === "combat") setCombat(m.combat);
         else if (m.t === "handouts") {
           const fresh = m.handouts.filter((h) => knownHandouts.current && !knownHandouts.current.has(h.id));
           knownHandouts.current = new Set(m.handouts.map((h) => h.id));
@@ -165,6 +174,7 @@ export function TableProvider({ children }: { children: ReactNode }) {
       setParty([]);
       setRolls([]);
       setHandouts([]);
+      setCombat(null);
       await vault?.setSetting(SEAT_SETTING, next);
       setSeat(next);
     },
@@ -179,6 +189,7 @@ export function TableProvider({ children }: { children: ReactNode }) {
     setParty([]);
     setRolls([]);
     setHandouts([]);
+    setCombat(null);
   }, [vault]);
 
   const shareCharacter = useCallback(
@@ -188,11 +199,19 @@ export function TableProvider({ children }: { children: ReactNode }) {
     [seat, enqueue],
   );
 
-  const shareRoll = useCallback((roll: Extract<PlayerMessage, { t: "roll" }>["roll"]) => enqueue({ t: "roll", v: PROTOCOL_VERSION, commandId: newId(), roll }), [enqueue]);
+  const shareRoll = useCallback(
+    (roll: Extract<PlayerMessage, { t: "roll" }>["roll"]) => {
+      enqueue({ t: "roll", v: PROTOCOL_VERSION, commandId: newId(), roll });
+      // An initiative roll during a fight also takes this character's place in the order.
+      const mine = combat?.order.find((c) => c.memberId === memberId);
+      if (/^Initiative\b/.test(roll.label) && mine && mine.initiative === null) enqueue({ t: "initiative", v: PROTOCOL_VERSION, commandId: newId(), total: roll.total });
+    },
+    [enqueue, combat, memberId],
+  );
 
   const value = useMemo<TableState>(
-    () => ({ seat, invite, status, problem, party, rolls, handouts, join, leave, shareCharacter, shareRoll }),
-    [seat, invite, status, problem, party, rolls, handouts, join, leave, shareCharacter, shareRoll],
+    () => ({ seat, invite, status, problem, party, rolls, handouts, combat, memberId, join, leave, shareCharacter, shareRoll }),
+    [seat, invite, status, problem, party, rolls, handouts, combat, memberId, join, leave, shareCharacter, shareRoll],
   );
   return <TableContext.Provider value={value}>{children}</TableContext.Provider>;
 }
