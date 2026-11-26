@@ -6,6 +6,7 @@
 export const PROTOCOL_VERSION = 1 as const;
 
 import type { PublicCombat } from "./combat.js";
+import { parseEffect, type Effect } from "./effects.js";
 
 /** Largest message accepted from a player: a character file with a small portrait fits comfortably. */
 export const MAX_MESSAGE_BYTES = 256 * 1024;
@@ -68,6 +69,7 @@ export type HostMessage =
   | { t: "rolls"; v: number; rolls: SharedRoll[] }
   | { t: "handouts"; v: number; handouts: PublicHandout[] }
   | { t: "combat"; v: number; combat: PublicCombat | null }
+  | { t: "effect"; v: number; effectId: string; effect: Effect }
   | { t: "ack"; v: number; commandId: string };
 
 /** What a table display receives. It never sends game commands. */
@@ -137,6 +139,10 @@ export function parseHostMessage(raw: unknown): HostMessage | null {
       return Array.isArray(raw.rolls) ? (raw as HostMessage) : null;
     case "handouts":
       return Array.isArray(raw.handouts) ? (raw as HostMessage) : null;
+    case "effect": {
+      const effect = parseEffect(raw.effect);
+      return id(raw.effectId) && effect ? { t: "effect", v: raw.v, effectId: raw.effectId, effect } : null;
+    }
     case "combat":
       return raw.combat === null || (isRecord(raw.combat) && Array.isArray(raw.combat.order)) ? (raw as HostMessage) : null;
     case "ack":

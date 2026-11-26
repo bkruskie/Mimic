@@ -6,20 +6,23 @@
 import type { Character } from "@mimicbox/ruleset-dnd5e";
 import {
   PROTOCOL_VERSION,
+  applyEffect,
   decodeInvite,
+  describeEffect,
   openLink,
   parseHostMessage,
   type Invite,
   type PartyMember,
   type PlayerMessage,
   type PublicCombat,
+  type Effect,
   type PublicHandout,
   type SharedRoll,
   type TableLink,
 } from "@mimicbox/table";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { newId } from "@mimicbox/ruleset-dnd5e";
-import { useApp } from "./state";
+import { content, summaryFor, useApp } from "./state";
 
 export type TableStatus = "idle" | "connecting" | "waiting" | "connected" | "denied" | "error";
 
@@ -47,6 +50,8 @@ interface TableState {
   leave: () => Promise<void>;
   shareCharacter: (c: Character) => void;
   shareRoll: (roll: Extract<PlayerMessage, { t: "roll" }>["roll"]) => void;
+  /** The open sheet takes the DM's effects itself, so they land in its own state. */
+  setEffectHandler: (handler: ((e: Effect) => void) | null) => void;
 }
 
 const TableContext = createContext<TableState | null>(null);
@@ -59,6 +64,11 @@ export function TableProvider({ children }: { children: ReactNode }) {
   const [handouts, setHandouts] = useState<PublicHandout[]>([]);
   const [combat, setCombat] = useState<PublicCombat | null>(null);
   const [memberId, setMemberId] = useState<string | null>(null);
+  const effectHandler = useRef<((e: Effect) => void) | null>(null);
+  const appliedEffects = useRef(new Set<string>());
+  const setEffectHandler = useCallback((h: ((e: Effect) => void) | null) => {
+    effectHandler.current = h;
+  }, []);
   // Handouts already seen on this connection, so only new reveals are announced.
   const knownHandouts = useRef<Set<string> | null>(null);
   const [seat, setSeat] = useState<Seat | null>(null);
@@ -149,6 +159,22 @@ export function TableProvider({ children }: { children: ReactNode }) {
         } else if (m.t === "party") setParty(m.members);
         else if (m.t === "rolls") setRolls(m.rolls);
         else if (m.t === "combat") setCombat(m.combat);
+        else if (m.t === "effect") {
+          if (appliedEffects.current.has(m.effectId)) return;
+          appliedEffects.current.add(m.effectId);
+          toast(describeEffect(m.effect));
+          if (effectHandler.current) effectHandler.current(m.effect);
+          else {
+            // The sheet isn't open: change the vault copy and send the DM the result.
+            void vault.get<Character>(seat.characterId).then(async (entry) => {
+              if (!entry) return;
+              const next = applyEffect(entry.doc, content, m.effect);
+              await vault.put(next, summaryFor(next));
+              outbox.current = [...outbox.current.filter((c) => c.t !== "character"), { t: "character", v: PROTOCOL_VERSION, commandId: newId(), character: next }];
+              flushOutbox();
+            });
+          }
+        }
         else if (m.t === "handouts") {
           const fresh = m.handouts.filter((h) => knownHandouts.current && !knownHandouts.current.has(h.id));
           knownHandouts.current = new Set(m.handouts.map((h) => h.id));
@@ -210,8 +236,8 @@ export function TableProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<TableState>(
-    () => ({ seat, invite, status, problem, party, rolls, handouts, combat, memberId, join, leave, shareCharacter, shareRoll }),
-    [seat, invite, status, problem, party, rolls, handouts, combat, memberId, join, leave, shareCharacter, shareRoll],
+    () => ({ seat, invite, status, problem, party, rolls, handouts, combat, memberId, join, leave, shareCharacter, shareRoll, setEffectHandler }),
+    [seat, invite, status, problem, party, rolls, handouts, combat, memberId, join, leave, shareCharacter, shareRoll, setEffectHandler],
   );
   return <TableContext.Provider value={value}>{children}</TableContext.Provider>;
 }

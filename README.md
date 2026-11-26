@@ -2,7 +2,7 @@
 
 A free, local-first tabletop roleplaying platform. Players keep their characters on their own devices; the DM's computer hosts the game; nothing costs anything to use or run.
 
-**Status: Phases 1 and 2 done, Phase 3 under way.** A character sheet for D&D 5e (2024 rules, SRD 5.2.1 content) that installs to a phone's home screen and works fully offline, and a first table: the DM hosts a game from a browser page and players join from their sheets with an invite link. The full plan is in [docs/architecture.md](docs/architecture.md).
+**Status: Phases 1 to 3 done; Phase 4 and combat under way.** A character sheet for D&D 5e (2024 rules, SRD 5.2.1 content) that installs to a phone's home screen and works fully offline, and a first table: the DM hosts a game from a browser page and players join from their sheets with an invite link. The full plan is in [docs/architecture.md](docs/architecture.md).
 
 ## What works today
 
@@ -14,6 +14,7 @@ A free, local-first tabletop roleplaying platform. Players keep their characters
 - Homebrew: your own features, attacks, subclasses and bonuses, each shown where the numbers are explained.
 - Phone, tablet and desktop layouts.
 - Play at a DM's table: the DM opens `studio.html`, creates a campaign and shares the invite link or QR code. Players join from their sheet; the DM sees the party's sheets and rolls, can roll in secret, and can open a read-only table display (`display.html`) on a second screen. Devices meet through public Nostr relays and connect directly; nothing is stored on a server.
+- The DM can deal damage, heal, give temporary hit points and set conditions on a connected player's sheet; the player is told what changed.
 - Combat: the DM starts a fight with the party, adds creatures (hidden or not) and steps through turns; players roll initiative from their sheet and see when it's their turn.
 - Handouts: the DM writes letters and clues in private and shows them to the party and the table display when ready.
 - Backups: the DM downloads a campaign file to keep or move to another computer; players back up every character in one file.

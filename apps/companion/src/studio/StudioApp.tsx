@@ -2,7 +2,7 @@
  * The DM's page: campaigns kept on this device, and hosting one so players can join from their sheets.
  */
 import { DiceSyntaxError, describeRoll, formatModifier, parseDice, roll as rollDice } from "@mimicbox/dice";
-import { ABILITIES, ABILITY_NAMES, SKILLS, SKILL_IDS, derive, newId, srdContent as content } from "@mimicbox/ruleset-dnd5e";
+import { ABILITIES, ABILITY_NAMES, CONDITIONS, SKILLS, SKILL_IDS, derive, newId, srdContent as content } from "@mimicbox/ruleset-dnd5e";
 import {
   CampaignImportError,
   HANDOUT_MAX_LENGTH,
@@ -16,6 +16,7 @@ import {
   startCombat,
   updateCombatant,
   type Combat,
+  type Effect,
   createCampaign,
   exportCampaign,
   importCampaign,
@@ -226,6 +227,7 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
                   key={m.userId}
                   member={m}
                   here={host.connected.includes(m.userId)}
+                  onEffect={(e) => host.sendEffect(m.userId, e)}
                   onRemove={() => update((c) => ({ ...c, ...removeMember(c, m.userId) }))}
                 />
               ))}
@@ -330,7 +332,13 @@ function QrCode({ text }: { text: string }) {
   return <div className="qr" role="img" aria-label="QR code of the invite link" dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
-function MemberCard({ member, here, onRemove }: { member: Member; here: boolean; onRemove: () => void }) {
+function MemberCard({ member, here, onEffect, onRemove }: { member: Member; here: boolean; onEffect: (e: Effect) => boolean; onRemove: () => void }) {
+  const [amount, setAmount] = useState("");
+  const n = Number.parseInt(amount, 10);
+  const valid = Number.isInteger(n) && n > 0 && n <= 999;
+  const send = (e: Effect) => {
+    if (onEffect(e)) setAmount("");
+  };
   const sheet = useMemo(() => (member.character ? derive(member.character, content) : null), [member.character]);
   const [confirm, setConfirm] = useState(false);
   const c = member.character;
@@ -378,6 +386,43 @@ function MemberCard({ member, here, onRemove }: { member: Member; here: boolean;
             <p className="small" style={{ margin: "8px 0 0" }}>
               {[...c.state.conditions, ...(c.state.exhaustion ? [`Exhaustion ${c.state.exhaustion}`] : [])].join(", ")}
             </p>
+          )}
+          {here ? (
+            <div className="row dm-effects" style={{ marginTop: 10 }} role="group" aria-label={`Change ${c.name}'s hit points`}>
+              <input
+                className="input init-input"
+                inputMode="numeric"
+                aria-label={`Amount for ${c.name}`}
+                value={amount}
+                placeholder="0"
+                onChange={(e) => setAmount(e.target.value)}
+              />
+              <button className="btn" disabled={!valid} onClick={() => send({ kind: "damage", amount: n })}>
+                Damage
+              </button>
+              <button className="btn" disabled={!valid} onClick={() => send({ kind: "heal", amount: n })}>
+                Heal
+              </button>
+              <button className="btn btn-quiet" disabled={!valid} onClick={() => send({ kind: "temp", amount: n })}>
+                Temporary HP
+              </button>
+            </div>
+          ) : (
+            <p className="muted small" style={{ margin: "8px 0 0" }}>
+              Away: damage and conditions can be sent once {member.playerName} is back.
+            </p>
+          )}
+          {here && (
+            <details className="small" style={{ marginTop: 8 }}>
+              <summary style={{ cursor: "pointer" }}>Conditions</summary>
+              <div className="row" style={{ marginTop: 8 }} role="group" aria-label={`${c.name}'s conditions`}>
+                {CONDITIONS.map((cond) => (
+                  <button key={cond} className="chip" aria-pressed={c.state.conditions.includes(cond)} onClick={() => send({ kind: "condition", condition: cond, on: !c.state.conditions.includes(cond) })}>
+                    {cond}
+                  </button>
+                ))}
+              </div>
+            </details>
           )}
           <details className="small" style={{ marginTop: 8 }}>
             <summary style={{ cursor: "pointer" }}>Saves and skills</summary>
