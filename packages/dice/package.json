@@ -1,0 +1,10 @@
+{
+  "name": "@mimicbox/dice",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Dice notation parser and roller shared by every Mimic Box ruleset.",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

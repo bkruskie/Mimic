@@ -1,0 +1,10 @@
+{
+  "name": "@mimicbox/local-store",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "On-device storage for Mimic Box: the character vault, roll history and storage persistence.",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

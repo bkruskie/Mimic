@@ -1,0 +1,222 @@
+[
+ {
+  "id": "acolyte",
+  "name": "Acolyte",
+  "abilityOptions": [
+   "int",
+   "wis",
+   "cha"
+  ],
+  "feat": {
+   "id": "magic-initiate",
+   "name": "Magic Initiate",
+   "option": "Cleric"
+  },
+  "skills": [
+   "insight",
+   "religion"
+  ],
+  "tool": "Calligrapher's Supplies",
+  "equipment": [
+   {
+    "label": "A",
+    "items": [
+     {
+      "name": "Calligrapher's Supplies",
+      "quantity": 1
+     },
+     {
+      "name": "Book (prayers)",
+      "quantity": 1
+     },
+     {
+      "name": "Holy Symbol",
+      "quantity": 1
+     },
+     {
+      "name": "Parchment (10 sheets)",
+      "quantity": 1
+     },
+     {
+      "name": "Robe",
+      "quantity": 1
+     }
+    ],
+    "gp": 8
+   },
+   {
+    "label": "B",
+    "items": [],
+    "gp": 50
+   }
+  ],
+  "equipmentText": "Choose A or B: (A) Calligrapher's Supplies, Book (prayers), Holy Symbol, Parchment (10 sheets), Robe, 8 GP; or (B) 50 GP"
+ },
+ {
+  "id": "criminal",
+  "name": "Criminal",
+  "abilityOptions": [
+   "dex",
+   "con",
+   "int"
+  ],
+  "feat": {
+   "id": "alert",
+   "name": "Alert",
+   "option": null
+  },
+  "skills": [
+   "sleightOfHand",
+   "stealth"
+  ],
+  "tool": "Thieves' Tools",
+  "equipment": [
+   {
+    "label": "A",
+    "items": [
+     {
+      "name": "Daggers",
+      "quantity": 2
+     },
+     {
+      "name": "Thieves' Tools",
+      "quantity": 1
+     },
+     {
+      "name": "Crowbar",
+      "quantity": 1
+     },
+     {
+      "name": "Pouches",
+      "quantity": 2
+     },
+     {
+      "name": "Traveler's Clothes",
+      "quantity": 1
+     }
+    ],
+    "gp": 16
+   },
+   {
+    "label": "B",
+    "items": [],
+    "gp": 50
+   }
+  ],
+  "equipmentText": "Choose A or B: (A) 2 Daggers, Thieves' Tools, Crowbar, 2 Pouches, Traveler's Clothes, 16 GP; or (B) 50 GP"
+ },
+ {
+  "id": "sage",
+  "name": "Sage",
+  "abilityOptions": [
+   "con",
+   "int",
+   "wis"
+  ],
+  "feat": {
+   "id": "magic-initiate",
+   "name": "Magic Initiate",
+   "option": "Wizard"
+  },
+  "skills": [
+   "arcana",
+   "history"
+  ],
+  "tool": "Calligrapher's Supplies",
+  "equipment": [
+   {
+    "label": "A",
+    "items": [
+     {
+      "name": "Quarterstaff",
+      "quantity": 1
+     },
+     {
+      "name": "Calligrapher's Supplies",
+      "quantity": 1
+     },
+     {
+      "name": "Book (history)",
+      "quantity": 1
+     },
+     {
+      "name": "Parchment (8 sheets)",
+      "quantity": 1
+     },
+     {
+      "name": "Robe",
+      "quantity": 1
+     }
+    ],
+    "gp": 8
+   },
+   {
+    "label": "B",
+    "items": [],
+    "gp": 50
+   }
+  ],
+  "equipmentText": "Choose A or B: (A) Quarterstaff, Calligrapher's Supplies, Book (history), Parchment (8 sheets), Robe, 8 GP; or (B) 50 GP"
+ },
+ {
+  "id": "soldier",
+  "name": "Soldier",
+  "abilityOptions": [
+   "str",
+   "dex",
+   "con"
+  ],
+  "feat": {
+   "id": "savage-attacker",
+   "name": "Savage Attacker",
+   "option": null
+  },
+  "skills": [
+   "athletics",
+   "intimidation"
+  ],
+  "tool": "*Choose one kind of Gaming Set* (see \"Equipment\")",
+  "equipment": [
+   {
+    "label": "A",
+    "items": [
+     {
+      "name": "Spear",
+      "quantity": 1
+     },
+     {
+      "name": "Shortbow",
+      "quantity": 1
+     },
+     {
+      "name": "Arrows",
+      "quantity": 20
+     },
+     {
+      "name": "Gaming Set (same as above)",
+      "quantity": 1
+     },
+     {
+      "name": "Healer's Kit",
+      "quantity": 1
+     },
+     {
+      "name": "Quiver",
+      "quantity": 1
+     },
+     {
+      "name": "Traveler's Clothes",
+      "quantity": 1
+     }
+    ],
+    "gp": 14
+   },
+   {
+    "label": "B",
+    "items": [],
+    "gp": 50
+   }
+  ],
+  "equipmentText": "Choose A or B: (A) Spear, Shortbow, 20 Arrows, Gaming Set (same as above), Healer's Kit, Quiver, Traveler's Clothes, 14 GP; or (B) 50 GP"
+ }
+]
