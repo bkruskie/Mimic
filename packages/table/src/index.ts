@@ -5,3 +5,4 @@ export * from "./link.js";
 export * from "./files.js";
 export * from "./combat.js";
 export * from "./effects.js";
+export * from "./map.js";

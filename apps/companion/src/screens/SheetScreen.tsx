@@ -5,6 +5,7 @@ import { go } from "../App";
 import { BackIcon, BagIcon, CloseIcon, D20Icon, ScrollIcon, SparkIcon, StarIcon, SwordIcon } from "../lib/icons";
 import { content, useCharacter, useRoller, type ShownRoll } from "../lib/state";
 import { useTable } from "../lib/table";
+import { MapView } from "../components/MapView";
 import { applyEffect } from "@mimicbox/table";
 import { Markdown } from "../lib/markdown";
 import { AbilitiesTab } from "./sheet/AbilitiesTab";
@@ -53,7 +54,7 @@ export function SheetScreen({ id }: { id: string }) {
   const roller = useRoller(id);
   const [tab, setTab] = useState<Tab>(() => (sessionStorage.getItem(`tab:${id}`) as Tab | null) ?? "actions");
   const [lastAsk, setLastAsk] = useState<RollAsk | null>(null);
-  const [drawer, setDrawer] = useState<"hp" | "conditions" | "dice" | "history" | "party" | null>(null);
+  const [drawer, setDrawer] = useState<"hp" | "conditions" | "dice" | "history" | "party" | "map" | null>(null);
   const cols = useColumns();
   const table = useTable();
   const atTable = table.seat?.characterId === id;
@@ -162,6 +163,11 @@ export function SheetScreen({ id }: { id: string }) {
               </button>
             )}
             {character.state.heroicInspiration && <span className="chip" aria-pressed="true">Heroic Inspiration</span>}
+            {atTable && table.map && (
+              <button className="chip" onClick={() => setDrawer("map")}>
+                Map
+              </button>
+            )}
             {atTable && (
               <button className={`chip chip-table ${table.status}`} onClick={() => setDrawer("party")}>
                 {tableStatusText(table.status, table.invite?.campaign ?? "the game")}
@@ -258,6 +264,19 @@ export function SheetScreen({ id }: { id: string }) {
       )}
       {drawer === "hp" && <HpDrawer {...props} onClose={() => setDrawer(null)} />}
       {drawer === "party" && <PartyDrawer onClose={() => setDrawer(null)} />}
+      {drawer === "map" && table.map && (
+        <Drawer title={table.map.name} onClose={() => setDrawer(null)}>
+          <MapView
+            label={`${table.map.name}, the parts you can see`}
+            map={table.map}
+            tiles={table.mapTiles}
+            tokens={table.map.tokens}
+            canMove={(t) => t.memberId !== null && t.memberId === table.memberId}
+            onMove={(t, x, y) => table.moveToken(t.id, x, y)}
+          />
+          <p className="muted small">Drag your token to move. You see only what your DM has revealed.</p>
+        </Drawer>
+      )}
       {drawer === "conditions" && <ConditionsDrawer {...props} onClose={() => setDrawer(null)} />}
       {drawer === "dice" && (
         <DiceDrawer

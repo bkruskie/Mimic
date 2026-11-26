@@ -7,6 +7,7 @@ export const PROTOCOL_VERSION = 1 as const;
 
 import type { PublicCombat } from "./combat.js";
 import { parseEffect, type Effect } from "./effects.js";
+import type { PublicMap } from "./map.js";
 
 /** Largest message accepted from a player: a character file with a small portrait fits comfortably. */
 export const MAX_MESSAGE_BYTES = 256 * 1024;
@@ -60,7 +61,8 @@ export type PlayerMessage =
   | { t: "hello"; v: number; invite: string; playerName: string }
   | { t: "character"; v: number; commandId: string; character: unknown }
   | { t: "roll"; v: number; commandId: string; roll: Pick<SharedRoll, "characterName" | "label" | "expression" | "total" | "breakdown" | "flag"> }
-  | { t: "initiative"; v: number; commandId: string; total: number };
+  | { t: "initiative"; v: number; commandId: string; total: number }
+  | { t: "move"; v: number; commandId: string; tokenId: string; x: number; y: number };
 
 export type HostMessage =
   | { t: "welcome"; v: number; campaign: string; memberId: string }
@@ -70,6 +72,9 @@ export type HostMessage =
   | { t: "handouts"; v: number; handouts: PublicHandout[] }
   | { t: "combat"; v: number; combat: PublicCombat | null }
   | { t: "effect"; v: number; effectId: string; effect: Effect }
+  | { t: "map"; v: number; map: PublicMap | null }
+  /** One map tile, already painted over where the fog is. */
+  | { t: "tile"; v: number; mapId: string; tx: number; ty: number; version: string; data: string }
   | { t: "ack"; v: number; commandId: string };
 
 /** What a table display receives. It never sends game commands. */
@@ -82,6 +87,7 @@ export interface DisplayView {
   /** The most recently revealed handout, shown large on the table. */
   spotlight: PublicHandout | null;
   combat: PublicCombat | null;
+  map: PublicMap | null;
 }
 
 const isRecord = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);
@@ -116,6 +122,10 @@ export function parsePlayerMessage(raw: unknown): PlayerMessage | null {
         roll: { characterName: r.characterName, label: r.label, expression: r.expression, total: r.total, breakdown: r.breakdown, ...(flag ? { flag } : {}) },
       };
     }
+    case "move":
+      return id(raw.commandId) && id(raw.tokenId) && Number.isInteger(raw.x) && Number.isInteger(raw.y)
+        ? { t: "move", v: raw.v, commandId: raw.commandId, tokenId: raw.tokenId, x: raw.x as number, y: raw.y as number }
+        : null;
     case "initiative":
       return id(raw.commandId) && typeof raw.total === "number" && Number.isInteger(raw.total) && Math.abs(raw.total) <= 100
         ? { t: "initiative", v: raw.v, commandId: raw.commandId, total: raw.total }
@@ -139,6 +149,12 @@ export function parseHostMessage(raw: unknown): HostMessage | null {
       return Array.isArray(raw.rolls) ? (raw as HostMessage) : null;
     case "handouts":
       return Array.isArray(raw.handouts) ? (raw as HostMessage) : null;
+    case "map":
+      return raw.map === null || (isRecord(raw.map) && Array.isArray(raw.map.tiles) && Array.isArray(raw.map.tokens)) ? (raw as HostMessage) : null;
+    case "tile":
+      return str(raw.mapId, 64) && Number.isInteger(raw.tx) && Number.isInteger(raw.ty) && typeof raw.version === "string" && typeof raw.data === "string" && /^data:image\/(jpeg|webp|png);base64,/.test(raw.data)
+        ? (raw as HostMessage)
+        : null;
     case "effect": {
       const effect = parseEffect(raw.effect);
       return id(raw.effectId) && effect ? { t: "effect", v: raw.v, effectId: raw.effectId, effect } : null;

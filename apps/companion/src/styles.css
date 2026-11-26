@@ -1291,3 +1291,84 @@ details.feature[open] {
 .display-combat .initiative li[aria-current="true"] {
   box-shadow: inset 0 0 0 3px var(--brass);
 }
+
+/* ---------- maps ---------- */
+.map-view {
+  display: grid;
+  gap: 6px;
+}
+.map-box {
+  overflow: auto;
+  max-height: 72vh;
+  border-radius: var(--r-md);
+  background: #120d14;
+}
+.map-surface {
+  position: relative;
+  user-select: none;
+}
+.map-surface.painting {
+  touch-action: none;
+  cursor: crosshair;
+}
+.map-surface > img {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+}
+.map-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.map-overlay .fog {
+  fill: rgba(18, 13, 20, 0.62);
+}
+.map-overlay .paint-reveal {
+  fill: rgba(127, 166, 107, 0.45);
+}
+.map-overlay .paint-hide {
+  fill: rgba(18, 13, 20, 0.85);
+}
+.token {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid var(--bone);
+  color: var(--hollow);
+  font-family: var(--font-display);
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  line-height: 1;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  cursor: default;
+}
+.token.movable {
+  cursor: grab;
+  touch-action: none;
+}
+.token.hidden {
+  opacity: 0.55;
+  border-style: dashed;
+}
+.map-zoom {
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+}
+.display .map-box {
+  max-height: none;
+  height: 100%;
+}
+.token-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: middle; }
+.display-map {
+  height: 70vh;
+}
+.display-map .map-view {
+  height: 100%;
+  grid-template-rows: 1fr auto;
+}
+.display .map-surface { margin: 0 auto; }

@@ -35,7 +35,8 @@ import { downloadJson, fileSafe } from "../lib/download";
 import qrcode from "qrcode-generator";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BackIcon } from "../lib/icons";
-import { deleteCampaign, getCampaign, listCampaigns, relaysFromAddress, saveCampaign, type StudioCampaign } from "./store";
+import { deleteCampaign, getCampaign, listCampaigns, loadTiles, relaysFromAddress, saveCampaign, saveTiles, type StudioCampaign } from "./store";
+import { MapsPanel } from "./MapsPanel";
 import { useHost } from "./useHost";
 
 const route = () => /^#\/c\/([\w-]+)$/.exec(location.hash)?.[1] ?? null;
@@ -61,7 +62,8 @@ function CampaignList() {
   async function onImport(file: File) {
     setError(null);
     try {
-      const { campaign, problems } = importCampaign(JSON.parse(await file.text()), content, { room: randomSecret(), key: randomSecret() });
+      const { campaign, problems, tiles } = importCampaign(JSON.parse(await file.text()), content, { room: randomSecret(), key: randomSecret() });
+      for (const [mapId, t] of Object.entries(tiles)) await saveTiles(mapId, new Map(Object.entries(t)));
       const taken = (campaigns ?? []).some((c) => c.id === campaign.id);
       const c: StudioCampaign = { ...campaign, ...(taken ? { id: newId(), name: `${campaign.name} (copy)` } : {}), relays: relaysFromAddress() };
       await saveCampaign(c);
@@ -219,6 +221,7 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
               onChange={(id, patch) => update((c) => ({ ...c, ...updateCombatant(c, id, patch) }))}
               onRemove={(id) => update((c) => ({ ...c, ...removeCombatant(c, id) }))}
             />
+            <MapsPanel campaign={campaign} update={update} onTilesChanged={host.forgetTiles} />
             <section className="section">
               <h2>Party</h2>
               {members.length === 0 && <p className="muted">No one has joined yet. Send your players the invite link.</p>}
@@ -288,7 +291,14 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
               <p className="muted small" style={{ marginTop: 4 }}>
                 Your campaign lives only in this browser. Download a backup now and then, or to move to another computer. The file includes your players' characters, so keep it private.
               </p>
-              <button className="btn" onClick={() => downloadJson(exportCampaign(campaign), `${fileSafe(campaign.name, "campaign")}.mimicbox-campaign`)}>
+              <button
+                className="btn"
+                onClick={async () => {
+                  const tiles: Record<string, Record<string, string>> = {};
+                  for (const m of campaign.maps ?? []) tiles[m.id] = Object.fromEntries(await loadTiles(m.id));
+                  downloadJson(exportCampaign(campaign, tiles), `${fileSafe(campaign.name, "campaign")}.mimicbox-campaign`);
+                }}
+              >
                 Download a backup
               </button>
             </section>

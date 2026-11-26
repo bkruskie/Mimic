@@ -4,6 +4,7 @@
  */
 import { CharacterImportError, importCharacter, type Character, type Content } from "@mimicbox/ruleset-dnd5e";
 import { HANDOUT_MAX_LENGTH, type Handout, type HostCampaign, type Member } from "./host.js";
+import type { MapScene, Token } from "./map.js";
 import type { SharedRoll } from "./protocol.js";
 
 export const CAMPAIGN_FORMAT = "mimicbox-campaign";
@@ -15,13 +16,35 @@ export interface CampaignFile {
   exportedAt: string;
   /** The campaign without its room and key: those are made fresh on import, so old invite links stay dead. */
   campaign: Omit<HostCampaign, "room" | "key" | "seen">;
+  /** Map images, as tiles keyed by map id and then "tx:ty". */
+  tiles?: Record<string, Record<string, string>>;
 }
 
 export class CampaignImportError extends Error {}
 
-export function exportCampaign(c: HostCampaign): CampaignFile {
+export function exportCampaign(c: HostCampaign, tiles?: Record<string, Record<string, string>>): CampaignFile {
   const { room: _room, key: _key, seen: _seen, ...rest } = c;
-  return { format: CAMPAIGN_FORMAT, formatVersion: CAMPAIGN_FORMAT_VERSION, exportedAt: new Date().toISOString(), campaign: rest };
+  return { format: CAMPAIGN_FORMAT, formatVersion: CAMPAIGN_FORMAT_VERSION, exportedAt: new Date().toISOString(), campaign: rest, ...(tiles ? { tiles } : {}) };
+}
+
+const num = (x: unknown, min: number, max: number): x is number => typeof x === "number" && Number.isFinite(x) && x >= min && x <= max;
+
+function readMap(m: unknown): MapScene | null {
+  if (!isRecord(m) || typeof m.id !== "string" || typeof m.name !== "string" || !num(m.width, 1, 8192) || !num(m.height, 1, 8192)) return null;
+  const g = m.grid;
+  if (!isRecord(g) || !num(g.size, 16, 400) || !num(g.offsetX, 0, 400) || !num(g.offsetY, 0, 400)) return null;
+  const tokens: Token[] = (Array.isArray(m.tokens) ? m.tokens : []).filter(
+    (t): t is Token => isRecord(t) && typeof t.id === "string" && typeof t.name === "string" && num(t.x, 0, 1000) && num(t.y, 0, 1000) && typeof t.color === "string",
+  );
+  return {
+    id: m.id,
+    name: m.name.slice(0, 60),
+    width: m.width,
+    height: m.height,
+    grid: { size: g.size, offsetX: g.offsetX, offsetY: g.offsetY },
+    revealed: (Array.isArray(m.revealed) ? m.revealed : []).filter((i): i is number => Number.isInteger(i) && (i as number) >= 0),
+    tokens: tokens.map((t) => ({ id: t.id, name: t.name.slice(0, 40), x: t.x, y: t.y, memberId: typeof t.memberId === "string" ? t.memberId : null, hidden: t.hidden === true, color: /^#[0-9a-f]{6}$/i.test(t.color) ? t.color : "#C9973F" })),
+  };
 }
 
 const isRecord = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);
@@ -30,7 +53,11 @@ const isRecord = (x: unknown): x is Record<string, unknown> => typeof x === "obj
  * Reads a campaign file. The result gets a new room and key (from `fresh`), so the DM sends players a new invite
  * link. Characters that can't be read are dropped from the party and listed in `problems`.
  */
-export function importCampaign(raw: unknown, content: Content, fresh: { room: string; key: string }): { campaign: HostCampaign; problems: string[] } {
+export function importCampaign(
+  raw: unknown,
+  content: Content,
+  fresh: { room: string; key: string },
+): { campaign: HostCampaign; problems: string[]; tiles: Record<string, Record<string, string>> } {
   if (!isRecord(raw) || raw.format !== CAMPAIGN_FORMAT) throw new CampaignImportError("That file isn't a Mimic Box campaign.");
   if (typeof raw.formatVersion !== "number" || raw.formatVersion < 1) throw new CampaignImportError("The campaign file has no valid version.");
   if (raw.formatVersion > CAMPAIGN_FORMAT_VERSION) throw new CampaignImportError("This campaign was saved by a newer version of Mimic Box. Update the app to open it.");
@@ -65,8 +92,18 @@ export function importCampaign(raw: unknown, content: Content, fresh: { room: st
       revealedAt: h.revealed === true && typeof h.revealedAt === "string" ? h.revealedAt : null,
       createdAt: typeof h.createdAt === "string" ? h.createdAt : new Date().toISOString(),
     }));
+  const maps = (Array.isArray(c.maps) ? c.maps : []).map(readMap).filter((m): m is MapScene => m !== null);
+  const tiles: Record<string, Record<string, string>> = {};
+  if (isRecord(raw.tiles)) {
+    for (const m of maps) {
+      const t = raw.tiles[m.id];
+      if (!isRecord(t)) continue;
+      tiles[m.id] = Object.fromEntries(Object.entries(t).filter(([k, v]) => /^\d+:\d+$/.test(k) && typeof v === "string" && /^data:image\/(jpeg|webp|png);base64,/.test(v))) as Record<string, string>;
+    }
+  }
   const now = new Date().toISOString();
   return {
+    tiles,
     campaign: {
       id: c.id,
       name: c.name.slice(0, 80),
@@ -75,6 +112,8 @@ export function importCampaign(raw: unknown, content: Content, fresh: { room: st
       members,
       rolls,
       handouts,
+      maps,
+      activeMapId: maps.some((m) => m.id === c.activeMapId) ? (c.activeMapId as string) : null,
       seen: {},
       createdAt: typeof c.createdAt === "string" ? c.createdAt : now,
       updatedAt: now,

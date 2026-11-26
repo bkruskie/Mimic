@@ -69,3 +69,16 @@ describe("campaign files with handouts", () => {
     ]);
   });
 });
+
+describe("campaign files with maps", () => {
+  it("keep maps, the map in play and their images", async () => {
+    const { addMap, setActiveMap } = await import("./index.js");
+    const scene = { id: "docks", name: "Docks", width: 1100, height: 600, grid: { size: 100, offsetX: 0, offsetY: 0 }, revealed: [0, 1], tokens: [{ id: "t", name: "Ogre", x: 3, y: 2, memberId: null, hidden: true, color: "#D9476B" }] };
+    const c = setActiveMap(addMap(played(), scene), "docks");
+    const file = JSON.parse(JSON.stringify(exportCampaign(c, { docks: { "0:0": "data:image/jpeg;base64,AAAA", "evil": "javascript:alert(1)" } })));
+    const back = importCampaign(file, content, { room: "r", key: "k" });
+    expect(back.campaign.maps).toEqual([scene]);
+    expect(back.campaign.activeMapId).toBe("docks");
+    expect(back.tiles).toEqual({ docks: { "0:0": "data:image/jpeg;base64,AAAA" } });
+  });
+});

@@ -13,18 +13,22 @@ const DB = "mimicbox-studio";
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (!globalThis.indexedDB) return reject(new Error("This browser has no on-device storage, so campaigns can't be saved."));
-    const req = indexedDB.open(DB, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore("campaigns", { keyPath: "id" });
+    const req = indexedDB.open(DB, 2);
+    req.onupgradeneeded = (e) => {
+      if (e.oldVersion < 1) req.result.createObjectStore("campaigns", { keyPath: "id" });
+      // Map tiles, keyed "mapId:tx:ty", kept apart from campaigns so campaigns stay small.
+      if (e.oldVersion < 2) req.result.createObjectStore("tiles");
+    };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error ?? new Error("Couldn't open campaign storage."));
   });
 }
 
-async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>, store = "campaigns"): Promise<T> {
   const db = await open();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction("campaigns", mode);
-    const req = fn(tx.objectStore("campaigns"));
+    const tx = db.transaction(store, mode);
+    const req = fn(tx.objectStore(store));
     tx.oncomplete = () => resolve(req.result);
     tx.onerror = () => reject(tx.error ?? new Error("Saving the campaign failed."));
   });
@@ -39,3 +43,33 @@ export const deleteCampaign = (id: string) => run("readwrite", (s) => s.delete(i
 export function relaysFromAddress(): string[] {
   return new URLSearchParams(location.search).getAll("relay").filter((u) => /^wss?:\/\//.test(u));
 }
+
+export async function saveTiles(mapId: string, tiles: Map<string, string>): Promise<void> {
+  const db = await open();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction("tiles", "readwrite");
+    for (const [key, data] of tiles) tx.objectStore("tiles").put(data, `${mapId}:${key}`);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("Saving the map failed. The device may be out of space."));
+  });
+}
+
+/** Every tile of a map, keyed "tx:ty". */
+export async function loadTiles(mapId: string): Promise<Map<string, string>> {
+  const db = await open();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("tiles", "readonly");
+    const out = new Map<string, string>();
+    const req = tx.objectStore("tiles").openCursor(IDBKeyRange.bound(`${mapId}:`, `${mapId}:\uffff`));
+    req.onsuccess = () => {
+      const cur = req.result;
+      if (!cur) return;
+      out.set(String(cur.key).slice(mapId.length + 1), cur.value as string);
+      cur.continue();
+    };
+    tx.oncomplete = () => resolve(out);
+    tx.onerror = () => reject(tx.error ?? new Error("Couldn't read the map."));
+  });
+}
+
+export const deleteTiles = (mapId: string) => run("readwrite", (s) => s.delete(IDBKeyRange.bound(`${mapId}:`, `${mapId}:\uffff`)), "tiles").then(() => undefined);
