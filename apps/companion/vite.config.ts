@@ -1,0 +1,42 @@
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+import { VitePWA } from "vite-plugin-pwa";
+
+export default defineConfig({
+  // Relative paths so the built app runs from any folder or host (Cloudflare Pages, a USB stick, a preview link).
+  base: "./",
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: "autoUpdate",
+      injectRegister: false,
+      manifest: {
+        name: "Mimic Box",
+        short_name: "Mimic Box",
+        description: "A free character sheet that lives on your device.",
+        theme_color: "#241A26",
+        background_color: "#241A26",
+        display: "standalone",
+        orientation: "portrait",
+        start_url: ".",
+        scope: ".",
+        icons: [
+          { src: "icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "icon-512.png", sizes: "512x512", type: "image/png" },
+          { src: "icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+          { src: "icon.svg", sizes: "any", type: "image/svg+xml" },
+        ],
+      },
+      workbox: {
+        // Precache everything, including the spell list, so the sheet works fully offline after the first visit.
+        globPatterns: ["**/*.{js,css,html,svg,png,woff2,json}"],
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+        navigateFallback: "index.html",
+      },
+    }),
+  ],
+  build: {
+    target: "es2022",
+    sourcemap: true,
+  },
+});

@@ -1,0 +1,30 @@
+{
+  "name": "mimicbox",
+  "private": true,
+  "license": "MIT",
+  "description": "Mimic Box VTT: a free, local-first tabletop roleplaying platform. Phase 1 is the offline character sheet.",
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @mimicbox/companion dev",
+    "build": "pnpm -r build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json",
+    "srd:import": "node tools/srd-import/import.mjs",
+    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "test:e2e": "pnpm --filter @mimicbox/companion build && node tests/e2e/character-sheet.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.7",
+    "fake-indexeddb": "^6.2.8",
+    "playwright-core": "^1.65.1",
+    "sharp": "~0.34.5",
+    "typescript": "7.0.2",
+    "vite": "^8.4.0",
+    "vitest": "5.1.2"
+  }
+}
