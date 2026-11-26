@@ -416,4 +416,39 @@ export function exportCharacter(c: Character, content: Content): CharacterFile {
   return { format: "mimicbox-character", formatVersion: 1, exportedAt: now(), attribution: content.pack.attribution, character: c };
 }
 
+/** One file with every character in a vault, for backups and moving to a new device. */
+export interface VaultBackupFile {
+  format: "mimicbox-backup";
+  formatVersion: 1;
+  exportedAt: string;
+  attribution: string;
+  characters: Character[];
+}
+
+export function exportVaultBackup(characters: Character[], content: Content): VaultBackupFile {
+  return { format: "mimicbox-backup", formatVersion: 1, exportedAt: now(), attribution: content.pack.attribution, characters };
+}
+
+/**
+ * Reads a backup file, or a single character file. Characters that can't be read are skipped and explained in
+ * `problems`, so one damaged character doesn't block the rest.
+ */
+export function importVaultBackup(raw: unknown, content: Content): { characters: Character[]; problems: string[] } {
+  if (!isRecord(raw)) throw new CharacterImportError("That file isn't a Mimic Box backup or character.");
+  if (raw.format !== "mimicbox-backup") return { characters: [importCharacter(raw, content)], problems: [] };
+  if (typeof raw.formatVersion !== "number" || raw.formatVersion > 1) throw new CharacterImportError("This backup was saved by a newer version of Mimic Box. Update the app to open it.");
+  if (!Array.isArray(raw.characters)) throw new CharacterImportError("The backup file is incomplete, so nothing was imported.");
+  const characters: Character[] = [];
+  const problems: string[] = [];
+  raw.characters.forEach((c, i) => {
+    try {
+      characters.push(importCharacter(c, content));
+    } catch (e) {
+      const name = isRecord(c) && typeof c.name === "string" ? c.name : `Character ${i + 1}`;
+      problems.push(`${name}: ${(e as Error).message}`);
+    }
+  });
+  return { characters, problems };
+}
+
 export type { DerivedSheet };

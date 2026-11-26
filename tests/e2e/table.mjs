@@ -146,6 +146,34 @@ try {
   check(!/Ambush/.test(shown), "the display never receives the secret roll");
   await shot(display, "display");
 
+  // ----- Handouts: written in private, shown when the DM chooses -----
+  const writeHandout = async (title, body) => {
+    await dm.page.getByRole("button", { name: "Write a handout" }).click();
+    await dm.page.getByLabel("Title").fill(title);
+    await dm.page.getByLabel("Text").fill(body);
+    await dm.page.getByRole("button", { name: "Save handout" }).click();
+  };
+  await writeHandout("The ferryman's letter", "Meet me at the **Sunken Bell** at midnight.");
+  await writeHandout("Villain's plan", "Flood the lower city.");
+  await alice.page.waitForTimeout(1000);
+  await alice.page.locator(".chip-table").click();
+  check(!/ferryman|Villain/.test(await alice.page.getByRole("dialog").innerText()), "saved handouts stay with the DM");
+  await alice.page.keyboard.press("Escape");
+  await dm.page.getByRole("article", { name: "The ferryman's letter" }).getByRole("button", { name: "Show to the party" }).click();
+  await eventually(async () => (await alice.page.getByText("New handout: The ferryman's letter").count()) > 0, "Alice is told about the new handout");
+  await alice.page.locator(".chip-table").click();
+  const drawer = await alice.page.getByRole("dialog").innerText();
+  check(/The ferryman's letter/.test(drawer) && !/Villain's plan/.test(drawer), "Alice gets the shown handout and not the hidden one");
+  await alice.page.getByRole("dialog").getByText("The ferryman's letter").click();
+  check(/Meet me at the Sunken Bell at midnight/.test(await alice.page.getByRole("dialog").innerText()), "and can read it");
+  await shot(alice.page, "alice-handout");
+  await alice.page.keyboard.press("Escape");
+  await eventually(async () => /Meet me at the Sunken Bell/.test(await display.locator("main").innerText()), "the display shows the handout");
+  check(!/Flood the lower city/.test(await display.locator("main").innerText()), "but never the hidden one");
+  await shot(display, "display-handout");
+  await dm.page.getByRole("article", { name: "The ferryman's letter" }).getByRole("button", { name: "Hide again" }).click();
+  await eventually(async () => !/ferryman/.test(await display.locator("main").innerText()), "hiding it again takes it off the display");
+
   // ----- Replacing the link keeps out anyone holding the old one -----
   await dm.page.getByRole("button", { name: "Replace link" }).click();
   await eventually(async () => (await dm.page.getByRole("textbox", { name: "Invite link" }).inputValue()) !== invite, "the DM replaces the invite link");
@@ -177,6 +205,38 @@ try {
   check((await dm.page.getByRole("list", { name: "Rolls" }).locator("li").count()) === rollsBefore, "reconnecting adds no rolls");
   check((await dm.page.locator(".member").count()) === 2, "and no extra party members");
   await shot(dm.page, "dm-party");
+
+  // ----- Backups: the DM moves the campaign to another computer; a player restores their vault -----
+  const [campaignFile] = await Promise.all([dm.page.waitForEvent("download"), dm.page.getByRole("button", { name: "Download a backup" }).click()]);
+  check(/\.mimicbox-campaign$/.test(campaignFile.suggestedFilename()), `the DM downloads ${campaignFile.suggestedFilename()}`);
+  const backupPath = join(SHOTS, "backup.mimicbox-campaign");
+  await campaignFile.saveAs(backupPath);
+  check(!readFileSync(backupPath, "utf8").includes(newInvite.split("/join/")[1]), "the backup holds no invite secret");
+  const laptop = await device("DM laptop", { width: 1280, height: 800 });
+  await laptop.page.goto(`${base}studio.html?relay=${encodeURIComponent(relayUrl)}`);
+  const campaignChooser = laptop.page.waitForEvent("filechooser");
+  await laptop.page.getByRole("button", { name: "Import a campaign" }).click();
+  await (await campaignChooser).setFiles(backupPath);
+  await laptop.page.getByRole("heading", { name: "The Sunken Bell" }).waitFor();
+  const moved = await text(laptop.page);
+  check(/Wren Ashdown/.test(moved) && /Bram Hollis/.test(moved) && /Imported\. Send your players the invite link/.test(moved), "the other computer opens the campaign with its party");
+  await laptop.context.close();
+
+  const [vaultFile] = await Promise.all([bob.page.waitForEvent("download"), (async () => {
+    await bob.page.goto(base);
+    await bob.page.getByRole("button", { name: "Back up all characters" }).click();
+  })()]);
+  const vaultPath = join(SHOTS, "bob.mimicbox-backup");
+  await vaultFile.saveAs(vaultPath);
+  const phone = await device("Bob's new phone", { width: 390, height: 844 });
+  await phone.page.goto(base);
+  await phone.page.getByText("Your vault is empty").waitFor();
+  const vaultChooser = phone.page.waitForEvent("filechooser");
+  await phone.page.getByRole("button", { name: "Import a file" }).click();
+  await (await vaultChooser).setFiles(vaultPath);
+  await phone.page.getByText("Bram Hollis").first().waitFor();
+  check(true, "a player's backup restores their characters on a new phone");
+  await phone.context.close();
 
   check(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(" | ")}` : ""}`);
   console.log(`\nAll table checks passed. Screenshots in ${SHOTS}`);

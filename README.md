@@ -14,6 +14,8 @@ A free, local-first tabletop roleplaying platform. Players keep their characters
 - Homebrew: your own features, attacks, subclasses and bonuses, each shown where the numbers are explained.
 - Phone, tablet and desktop layouts.
 - Play at a DM's table: the DM opens `studio.html`, creates a campaign and shares the invite link or QR code. Players join from their sheet; the DM sees the party's sheets and rolls, can roll in secret, and can open a read-only table display (`display.html`) on a second screen. Devices meet through public Nostr relays and connect directly; nothing is stored on a server.
+- Handouts: the DM writes letters and clues in private and shows them to the party and the table display when ready.
+- Backups: the DM downloads a campaign file to keep or move to another computer; players back up every character in one file.
 - Inventory with equip toggles and SRD item lookup, coins, notes and a portrait.
 - Characters live in a vault on the device (IndexedDB), with a trash you can restore from, and export or import as `.mimicbox-character` files.
 

@@ -4,6 +4,7 @@
  */
 import { displayChannelName, type DisplayView } from "@mimicbox/table";
 import { useEffect, useState } from "react";
+import { Markdown } from "../lib/markdown";
 
 export function DisplayApp() {
   const campaignId = location.hash.replace(/^#/, "");
@@ -64,6 +65,12 @@ export function DisplayApp() {
             })}
         </section>
         <section aria-label="Rolls" className="display-rolls">
+          {view.spotlight && (
+            <article className="display-handout" aria-label={view.spotlight.title}>
+              <h2>{view.spotlight.title}</h2>
+              <Markdown text={view.spotlight.body} />
+            </article>
+          )}
           {latest && (
             <div className={`display-latest ${latest.flag ?? ""}`}>
               <span className="display-total">{latest.total}</span>

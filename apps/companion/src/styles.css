@@ -1211,3 +1211,18 @@ details.feature[open] {
 .display-card .muted {
   font-size: clamp(14px, 1.1vw, 18px);
 }
+.display-handout {
+  background: var(--bone);
+  color: var(--hollow);
+  border-radius: var(--r-lg);
+  padding: clamp(16px, 2vw, 28px);
+  margin-bottom: 20px;
+  font-size: clamp(16px, 1.3vw, 22px);
+}
+.display-handout h2 {
+  color: var(--hollow);
+  font-size: clamp(22px, 2vw, 34px);
+  margin-bottom: 8px;
+}
+.display-handout .prose, .display-handout .prose * { color: inherit; }
+.handout-card { margin-top: 10px; }
