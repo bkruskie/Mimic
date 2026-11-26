@@ -2,6 +2,7 @@
  * Derivation: turns a stored character (choices + play state) into every number on the sheet.
  * Nothing here is saved. Each value carries its sources so the sheet can explain it.
  */
+import { DiceSyntaxError, parseDice } from "@mimicbox/dice";
 import { findBackground, findClass, findSpecies } from "./content.js";
 import {
   CAPSTONE_ABILITIES,
@@ -34,6 +35,7 @@ import {
   SKILL_IDS,
   type Ability,
   type ArmorDef,
+  type BonusTarget,
   type Character,
   type ClassDef,
   type Content,
@@ -217,6 +219,17 @@ export function derive(character: Character, content: Content): DerivedSheet {
   const background = findBackground(content, build.background.id);
   const featIds = new Set(build.feats.map((f) => f.id));
 
+  // ----- homebrew bonuses -----
+  const homebrew = character.homebrew ?? { features: [], attacks: [], bonuses: [] };
+  const activeBonuses = homebrew.bonuses.filter((b) => {
+    if (!b.itemId) return true;
+    const item = character.inventory.find((i) => i.id === b.itemId);
+    if (!item) warnings.push(`"${b.label}" is tied to an item that is no longer in your inventory, so it doesn't count.`);
+    return Boolean(item?.equipped);
+  });
+  const bonusSources = (target: BonusTarget): Source[] =>
+    activeBonuses.filter((b) => b.target === target && !b.setMinimum).map((b) => ({ label: b.label, value: b.value }));
+
   // ----- ability scores -----
   const scoreSources: Record<Ability, Source[]> = Object.fromEntries(
     ABILITIES.map((a) => [a, [{ label: "Base score", value: build.baseAbilities[a] }]]),
@@ -263,6 +276,18 @@ export function derive(character: Character, content: Content): DerivedSheet {
       if (applied > 0 || inc.value > 0) sources.push({ label: applied < inc.value ? `${inc.label} (maximum ${inc.cap})` : inc.label, value: applied });
       current += applied;
     }
+    for (const b of activeBonuses.filter((x) => x.target === `ability:${a}`)) {
+      if (b.setMinimum) {
+        if (b.value > current) {
+          sources.push({ label: `${b.label} (score becomes ${b.value})`, value: b.value - current });
+          current = b.value;
+        }
+      } else {
+        const applied = Math.max(0, Math.min(b.value, 30 - current));
+        sources.push({ label: applied < b.value ? `${b.label} (maximum 30)` : b.label, value: applied });
+        current += applied;
+      }
+    }
     scores[a] = sum(sources);
   }
   const mods = Object.fromEntries(ABILITIES.map((a) => [a, abilityMod(scores[a].value)])) as Record<Ability, number>;
@@ -284,6 +309,7 @@ export function derive(character: Character, content: Content): DerivedSheet {
     const sources: Source[] = [{ label: `${ABILITY_NAMES[a]} modifier`, value: mods[a] }];
     if (saveProf.has(a)) sources.push({ label: laterSaveSource.has(a) ? `Proficiency (${laterSaveSource.get(a)})` : "Proficiency", value: proficiencyBonus });
     if (aura) sources.push({ label: "Aura of Protection (while conscious)", value: aura });
+    sources.push(...bonusSources("saves"), ...bonusSources(`save:${a}`));
     abilities[a] = { score: scores[a], mod: mods[a], save: sum(sources), saveProficient: saveProf.has(a) };
   }
 
@@ -320,6 +346,7 @@ export function derive(character: Character, content: Content): DerivedSheet {
     }
     if (order === "thaumaturge" && (id === "arcana" || id === "religion")) sources.push({ label: "Thaumaturge", value: wisBonus });
     if (order === "magician" && (id === "arcana" || id === "nature")) sources.push({ label: "Magician", value: wisBonus });
+    sources.push(...bonusSources(`skill:${id}`));
     skills[id] = { total: sum(sources), ability, proficiency: prof };
   }
   for (const s of expertise) if (!proficient.has(s)) warnings.push(`Expertise in ${SKILLS[s].name} needs proficiency in it first.`);
@@ -424,6 +451,7 @@ export function derive(character: Character, content: Content): DerivedSheet {
   if (species.id === "dwarf") hpSources.push({ label: "Dwarven Toughness", value: level });
   const sorcerer = entries.find((e) => e.id === "sorcerer");
   if (sorcerer?.subclass === "draconic-sorcery" && sorcerer.level >= 3) hpSources.push({ label: "Draconic Resilience", value: sorcerer.level });
+  hpSources.push(...bonusSources("hpMax"));
   const maxHp = sum(hpSources);
   if (maxHp.value < level) {
     maxHp.sources.push({ label: "Minimum 1 per level", value: level - maxHp.value });
@@ -474,11 +502,17 @@ export function derive(character: Character, content: Content): DerivedSheet {
     else warnings.push("You lack Shield training, so the Shield gives no Armor Class.");
     ac.value = ac.sources.reduce((t, s) => t + s.value, 0);
   }
+  const acBonus = bonusSources("ac");
+  if (acBonus.length) {
+    ac.sources = [...ac.sources, ...acBonus];
+    ac.value = ac.sources.reduce((t, s) => t + s.value, 0);
+  }
 
   // ----- initiative and speed -----
   const initSources: Source[] = [{ label: "Dexterity modifier", value: mods.dex }];
   if (featIds.has("alert")) initSources.push({ label: "Alert feat", value: proficiencyBonus });
   else if (jackOfAllTrades) initSources.push({ label: "Jack of All Trades", value: Math.floor(proficiencyBonus / 2) });
+  initSources.push(...bonusSources("initiative"));
   const fighter = entries.find((e) => e.id === "fighter");
   const initiativeAdvantage = fighter?.subclass === "champion" && fighter.level >= 3;
 
@@ -491,6 +525,7 @@ export function derive(character: Character, content: Content): DerivedSheet {
   const barbarian = entries.find((e) => e.id === "barbarian");
   if (barbarian && barbarian.level >= 5 && bodyArmor?.category !== "heavy") speedSources.push({ label: "Fast Movement", value: 10 });
   if (bodyArmor?.strength && scores.str.value < bodyArmor.strength) speedSources.push({ label: `${bodyArmor.name} needs Strength ${bodyArmor.strength}`, value: -10 });
+  speedSources.push(...bonusSources("speed"));
 
   // ----- attacks -----
   const attacks: Attack[] = [];
@@ -519,6 +554,7 @@ export function derive(character: Character, content: Content): DerivedSheet {
     const toHit: Source[] = [{ label: `${ABILITY_NAMES[ability]} modifier`, value: mods[ability] }];
     if (prof) toHit.push({ label: "Proficiency", value: proficiencyBonus });
     if (featIds.has("archery") && weapon.kind === "ranged") toHit.push({ label: "Archery fighting style", value: 2 });
+    toHit.push(...bonusSources("attack"));
     let die = weapon.damage;
     if (isMonkWeapon && martialArtsDie && dieSize(martialArtsDie) > dieSize(weapon.damage)) die = martialArtsDie;
     const notes: string[] = [];
@@ -554,7 +590,7 @@ export function derive(character: Character, content: Content): DerivedSheet {
     attacks.push({
       id: "unarmed-strike",
       name: "Unarmed Strike",
-      toHit: sum([{ label: `${ABILITY_NAMES[ability]} modifier`, value: mods[ability] }, { label: "Proficiency", value: proficiencyBonus }]),
+      toHit: sum([{ label: `${ABILITY_NAMES[ability]} modifier`, value: mods[ability] }, { label: "Proficiency", value: proficiencyBonus }, ...bonusSources("attack")]),
       damage: martialArtsDie ? withMod(martialArtsDie, mods[ability]) : `${Math.max(0, 1 + mods[ability])}`,
       damageType: "bludgeoning",
       versatileDamage: null,
@@ -583,8 +619,8 @@ export function derive(character: Character, content: Content): DerivedSheet {
     spellcasting = {
       classId: caster.id,
       ability,
-      saveDc: sum([{ label: "Base", value: 8 }, { label: `${ABILITY_NAMES[ability]} modifier`, value: mods[ability] }, { label: "Proficiency", value: proficiencyBonus }]),
-      attack: sum([{ label: `${ABILITY_NAMES[ability]} modifier`, value: mods[ability] }, { label: "Proficiency", value: proficiencyBonus }]),
+      saveDc: sum([{ label: "Base", value: 8 }, { label: `${ABILITY_NAMES[ability]} modifier`, value: mods[ability] }, { label: "Proficiency", value: proficiencyBonus }, ...bonusSources("spellDc")]),
+      attack: sum([{ label: `${ABILITY_NAMES[ability]} modifier`, value: mods[ability] }, { label: "Proficiency", value: proficiencyBonus }, ...bonusSources("spellAttack")]),
       cantripLimit: (Number.parseInt(row.columns["Cantrips"] ?? "0", 10) || 0) + extraCantrip,
       preparedLimit: Number.parseInt(row.columns["Prepared Spells"] ?? "0", 10) || 0,
       slots,
@@ -599,6 +635,38 @@ export function derive(character: Character, content: Content): DerivedSheet {
     if (character.spells.cantrips.length > spellcasting.cantripLimit) warnings.push(`You know ${character.spells.cantrips.length} cantrips; the limit is ${spellcasting.cantripLimit}.`);
     if (character.spells.prepared.length > spellcasting.preparedLimit) warnings.push(`You have ${character.spells.prepared.length} spells prepared; the limit is ${spellcasting.preparedLimit}.`);
     if (bodyArmor && !trainedFor(bodyArmor)) warnings.push("You can't cast spells while wearing armor you lack training with.");
+  }
+
+  // ----- homebrew attacks -----
+  for (const h of homebrew.attacks) {
+    const ability: Ability | null = h.ability === "none" ? null : h.ability === "spell" ? spellcasting?.ability ?? null : h.ability;
+    if (h.ability === "spell" && !spellcasting) warnings.push(`${h.name} uses your spellcasting ability, but you don't have the Spellcasting feature; no ability modifier is added.`);
+    const toHit: Source[] = [];
+    if (ability) toHit.push({ label: `${ABILITY_NAMES[ability]} modifier`, value: mods[ability] });
+    if (h.proficient) toHit.push({ label: "Proficiency", value: proficiencyBonus });
+    if (h.toHitBonus) toHit.push({ label: "Bonus", value: h.toHitBonus });
+    toHit.push(...bonusSources(h.ability === "spell" ? "spellAttack" : "attack"));
+    let damage = h.damage.trim();
+    try {
+      parseDice(damage);
+    } catch (e) {
+      if (!(e instanceof DiceSyntaxError)) throw e;
+      warnings.push(`${h.name}: "${damage}" isn't a dice roll Mimic Box can read, such as 1d8 or 2d6+1.`);
+      damage = "0";
+    }
+    attacks.push({
+      id: `custom:${h.id}`,
+      name: h.name,
+      toHit: sum(toHit),
+      damage: h.addModifier && ability ? withMod(damage, mods[ability]) : damage,
+      damageType: h.damageType,
+      versatileDamage: null,
+      range: h.range,
+      properties: "Homebrew",
+      mastery: null,
+      proficient: h.proficient,
+      notes: h.notes ? [h.notes] : [],
+    });
   }
 
   // ----- granted spells -----
@@ -642,6 +710,10 @@ export function derive(character: Character, content: Content): DerivedSheet {
     resources.push({ id: `free-cast:${g.id}`, name: `Free cast: ${spellName}`, max: species.id === "gnome" && g.id === "speak-with-animals" ? proficiencyBonus : 1, reset: "long", source: g.source });
   }
 
+  for (const f of homebrew.features) {
+    if (f.uses && f.uses.max > 0) resources.push({ id: `custom:${f.id}`, name: f.name, max: f.uses.max, reset: f.uses.reset, source: `${f.kind}: ${f.name}` });
+  }
+
   // ----- features -----
   const features: FeatureEntry[] = [];
   for (const e of entries) {
@@ -657,6 +729,7 @@ export function derive(character: Character, content: Content): DerivedSheet {
     }
   }
   for (const t of species.traits) features.push({ source: species.name, name: t.name, level: null, text: t.text });
+  for (const f of homebrew.features) features.push({ source: f.kind || "Homebrew", name: f.name, level: null, text: f.text });
   for (const f of build.feats) {
     const def = content.feats.find((d) => d.id === f.id);
     if (def) features.push({ source: f.source === "background" ? `${background.name} background` : def.category === "epic-boon" ? "Epic Boon" : "Feat", name: def.name, level: null, text: def.text });

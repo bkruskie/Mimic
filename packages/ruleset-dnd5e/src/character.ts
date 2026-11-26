@@ -5,9 +5,9 @@
 import { findBackground, findClass, resolveItem } from "./content.js";
 import { derive, type DerivedSheet } from "./derive.js";
 import { STANDARD_ARRAY } from "./mechanics.js";
-import { ABILITIES, type Ability, type AbilityScores, type Character, type ClassEntry, type Content, type InventoryItem } from "./types.js";
+import { ABILITIES, SKILL_IDS, type Ability, type AbilityScores, type Character, type ClassEntry, type Content, type Homebrew, type InventoryItem } from "./types.js";
 
-export const CURRENT_SCHEMA_VERSION = 1 as const;
+export const CURRENT_SCHEMA_VERSION = 2 as const;
 
 export const newId = (): string =>
   globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -286,12 +286,54 @@ export function importCharacter(raw: unknown, content: Content, options: { newId
     const score = (c.build.baseAbilities as Record<Ability, unknown>)?.[a];
     if (typeof score !== "number" || score < 1 || score > 30) throw new CharacterImportError(`The ${a.toUpperCase()} score in the file isn't valid.`);
   }
+  validateHomebrew(c.homebrew);
   try {
     derive(c, content);
   } catch (e) {
     throw new CharacterImportError(`The character refers to content this app doesn't have: ${(e as Error).message}`);
   }
-  return options.newId ? { ...c, id: newId(), updatedAt: now() } : c;
+  const upgraded: Character = { ...c, schemaVersion: CURRENT_SCHEMA_VERSION };
+  return options.newId ? { ...upgraded, id: newId(), updatedAt: now() } : upgraded;
+}
+
+const BONUS_TARGETS = new Set<string>([
+  "ac",
+  "saves",
+  "initiative",
+  "speed",
+  "hpMax",
+  "attack",
+  "spellDc",
+  "spellAttack",
+  ...ABILITIES.flatMap((a) => [`save:${a}`, `ability:${a}`]),
+  ...SKILL_IDS.map((s) => `skill:${s}`),
+]);
+
+function validateHomebrew(h: unknown): void {
+  if (h === undefined) return;
+  const bad = (what: string) => new CharacterImportError(`The character's homebrew ${what} isn't valid, so the file wasn't imported. Remove it from the file or export it again from Mimic Box.`);
+  if (!isRecord(h) || !Array.isArray(h.features) || !Array.isArray(h.attacks) || !Array.isArray(h.bonuses)) throw bad("section");
+  for (const f of h.features) if (!isRecord(f) || typeof f.name !== "string" || typeof f.text !== "string") throw bad("feature list");
+  for (const a of h.attacks) if (!isRecord(a) || typeof a.name !== "string" || typeof a.damage !== "string") throw bad("attack list");
+  for (const b of h.bonuses) if (!isRecord(b) || typeof b.value !== "number" || !BONUS_TARGETS.has(String(b.target))) throw bad("bonus list");
+}
+
+// ---------- homebrew ----------
+
+/** Adds or replaces one homebrew entry (matched by id). */
+export function saveHomebrew<K extends keyof Homebrew>(c: Character, kind: K, entry: Homebrew[K][number]): Character {
+  const hb: Homebrew = c.homebrew ?? { features: [], attacks: [], bonuses: [] };
+  const list = hb[kind] as Homebrew[K][number][];
+  const next = list.some((e) => e.id === entry.id) ? list.map((e) => (e.id === entry.id ? entry : e)) : [...list, entry];
+  return touch({ ...c, homebrew: { ...hb, [kind]: next } });
+}
+
+/** Removes one homebrew entry, and any uses spent on it. */
+export function removeHomebrew(c: Character, kind: keyof Homebrew, id: string): Character {
+  const hb: Homebrew = c.homebrew ?? { features: [], attacks: [], bonuses: [] };
+  const resourcesSpent = { ...c.state.resourcesSpent };
+  delete resourcesSpent[`custom:${id}`];
+  return touch({ ...c, homebrew: { ...hb, [kind]: (hb[kind] as { id: string }[]).filter((e) => e.id !== id) }, state: { ...c.state, resourcesSpent } });
 }
 
 export interface CharacterFile {

@@ -278,10 +278,69 @@ export interface PlayState {
   concentratingOn: string | null;
 }
 
+/** What a homebrew bonus changes. Scores use "ability:str"; one save "save:dex"; one skill "skill:stealth". */
+export type BonusTarget =
+  | "ac"
+  | "saves"
+  | `save:${Ability}`
+  | `ability:${Ability}`
+  | `skill:${SkillId}`
+  | "initiative"
+  | "speed"
+  | "hpMax"
+  | "attack"
+  | "spellDc"
+  | "spellAttack";
+
+export interface HomebrewBonus {
+  id: string;
+  /** Shown in explanations, for example "Ring of Protection". */
+  label: string;
+  target: BonusTarget;
+  value: number;
+  /** Ability scores only: "becomes at least" the value, like Gauntlets of Ogre Power, instead of adding it. */
+  setMinimum?: boolean;
+  /** Counts only while this inventory item is equipped. */
+  itemId?: string | null;
+}
+
+export interface HomebrewFeature {
+  id: string;
+  name: string;
+  /** Where it comes from, shown as its group: "Feat", "Magic item", "Boon", "Trait". */
+  kind: string;
+  text: string;
+  uses: { max: number; reset: "long" | "short" } | null;
+}
+
+export interface HomebrewAttack {
+  id: string;
+  name: string;
+  /** "spell" uses the spellcasting ability; "none" adds no ability modifier. */
+  ability: Ability | "spell" | "none";
+  proficient: boolean;
+  /** Extra to-hit bonus, for example a +1 weapon. */
+  toHitBonus: number;
+  /** Dice without the modifier, for example "1d8" or "2d6+1". */
+  damage: string;
+  /** Add the ability modifier to damage. */
+  addModifier: boolean;
+  damageType: string;
+  range: string;
+  notes: string;
+}
+
+export interface Homebrew {
+  features: HomebrewFeature[];
+  attacks: HomebrewAttack[];
+  bonuses: HomebrewBonus[];
+}
+
 export interface Character {
   id: string;
   ruleset: "dnd5e-2024";
-  schemaVersion: 1;
+  /** 2 adds homebrew, class options and Mystic Arcanum. Version 1 files open unchanged. */
+  schemaVersion: 1 | 2;
   createdAt: string;
   updatedAt: string;
   name: string;
@@ -317,6 +376,8 @@ export interface Character {
   };
   inventory: InventoryItem[];
   currency: Currency;
+  /** The player's own features, attacks and bonuses. Missing on version 1 files. */
+  homebrew?: Homebrew;
   state: PlayState;
   notes: {
     appearance: string;

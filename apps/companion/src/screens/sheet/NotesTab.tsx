@@ -2,6 +2,7 @@ import { classOptionRule, derive, exportCharacter, findClass, levelUp, type Char
 import { useState } from "react";
 import { go } from "../../App";
 import { ClassOptionsEditor, PendingChoices } from "../../components/editors";
+import { BonusForm, FeatureForm, describeBonus } from "../../components/homebrew";
 import { Markdown } from "../../lib/markdown";
 import { content, useApp } from "../../lib/state";
 import { portraitFromFile } from "../../lib/edit";
@@ -19,6 +20,9 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
   const [levelling, setLevelling] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editingOptions, setEditingOptions] = useState(false);
+  const [featureForm, setFeatureForm] = useState<{ id: string | null } | null>(null);
+  const [bonusForm, setBonusForm] = useState<{ id: string | null } | null>(null);
+  const hb = character.homebrew ?? { features: [], attacks: [], bonuses: [] };
   const entry = character.build.classes[0]!;
   const optionRule = classOptionRule(entry.id, entry.level, findClass(content, entry.id).progression[entry.level - 1]?.columns ?? {});
 
@@ -98,6 +102,57 @@ export function NotesTab({ character, sheet, update, onHistory }: SheetProps & {
           </div>
         ))}
       </section>
+
+      <section className="section">
+        <h2>Homebrew</h2>
+        <p className="muted small" style={{ margin: "4px 0 10px" }}>
+          Your own features, magic items and bonuses. Bonuses are added to the numbers they change, and each number still explains where it comes from.
+        </p>
+        {hb.features.length + hb.bonuses.length > 0 && (
+          <ul className="rows" aria-label="Your homebrew">
+            {hb.features.map((f) => (
+              <li key={f.id} className="resource spread">
+                <span>
+                  <strong>{f.name}</strong>
+                  <br />
+                  <span className="muted small">
+                    {f.kind}
+                    {f.uses ? `, ${f.uses.max} use${f.uses.max === 1 ? "" : "s"} per ${f.uses.reset === "long" ? "Long Rest" : "Short or Long Rest"}` : ""}
+                  </span>
+                </span>
+                <button className="btn btn-quiet" aria-label={`Edit ${f.name}`} onClick={() => setFeatureForm({ id: f.id })}>
+                  Edit
+                </button>
+              </li>
+            ))}
+            {hb.bonuses.map((b) => (
+              <li key={b.id} className="resource spread">
+                <span>
+                  <strong>{b.label}</strong>
+                  <br />
+                  <span className="muted small">{describeBonus(b, character)}</span>
+                </span>
+                <button className="btn btn-quiet" aria-label={`Edit ${b.label}`} onClick={() => setBonusForm({ id: b.id })}>
+                  Edit
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="row" style={{ marginTop: 10 }}>
+          <button className="btn" onClick={() => setFeatureForm({ id: null })}>
+            Add a feature
+          </button>
+          <button className="btn" onClick={() => setBonusForm({ id: null })}>
+            Add a bonus
+          </button>
+        </div>
+        <p className="muted small" style={{ marginTop: 8 }}>
+          Add your own attacks on the Actions tab.
+        </p>
+      </section>
+      {featureForm && <FeatureForm feature={hb.features.find((f) => f.id === featureForm.id) ?? null} update={update} onClose={() => setFeatureForm(null)} />}
+      {bonusForm && <BonusForm bonus={hb.bonuses.find((b) => b.id === bonusForm.id) ?? null} character={character} update={update} onClose={() => setBonusForm(null)} />}
 
       <section className="section stack">
         <h2>Notes</h2>

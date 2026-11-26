@@ -306,6 +306,45 @@ try {
   check(/Free cast: /.test(await page.locator("main").innerText()), "the arcanum spell has a free cast per Long Rest");
   await shot("sheet-warlock-actions");
 
+  // ----- Homebrew: a bonus, a feature with uses, and an attack -----
+  const acNow = async () => Number(await page.locator(".vital", { hasText: "AC" }).locator(".value").innerText());
+  const acBefore = await acNow();
+  await tap("button", "Notes");
+  await tap("button", "Add a bonus");
+  await page.getByRole("dialog").getByLabel("Comes from").fill("Ring of Protection");
+  await page.getByRole("dialog").getByLabel("Changes").selectOption("ac");
+  await page.getByRole("dialog").getByLabel("Amount").fill("1");
+  await tap("button", "Add bonus");
+  check((await acNow()) === acBefore + 1, `a +1 AC bonus raises AC from ${acBefore} to ${acBefore + 1}`);
+  await tap("button", "Add a feature");
+  await page.getByRole("dialog").getByLabel("Name").fill("Lucky Charm");
+  await page.getByRole("dialog").getByLabel("Group").selectOption("Magic item");
+  await page.getByRole("dialog").getByLabel("What it does").fill("Reroll one d20 you just rolled.");
+  await page.getByRole("dialog").getByText("It has limited uses").click();
+  await page.getByRole("dialog").getByLabel("Uses", { exact: true }).fill("2");
+  await tap("button", "Add feature");
+  await shot("sheet-homebrew-notes");
+  check(/Magic item, 2 uses per Long Rest/.test(await page.locator("main").innerText()), "the feature is listed with its uses");
+  await tap("button", "Actions");
+  await tap("button", "Add an attack");
+  await page.getByRole("dialog").getByLabel("Name").fill("Hexblade Dagger");
+  await page.getByRole("dialog").getByLabel("Uses this ability").selectOption("cha");
+  await page.getByRole("dialog").getByLabel("Extra bonus to hit").fill("1");
+  await page.getByRole("dialog").getByLabel("Damage dice").fill("two d4");
+  check(await page.getByRole("button", { name: "Add attack" }).isDisabled(), "an unreadable damage roll can't be saved");
+  await page.getByRole("dialog").getByLabel("Damage dice").fill("1d4");
+  await page.getByRole("dialog").getByLabel("Damage type").fill("piercing");
+  await tap("button", "Add attack");
+  const hbActions = await page.locator("main").innerText();
+  check(/Hexblade Dagger/.test(hbActions), "the homebrew attack is listed");
+  check(/Lucky Charm\s+2 of 2 left/.test(hbActions), "the feature's uses are tracked under Limited uses");
+  await shot("sheet-homebrew-actions");
+  await page.reload();
+  await page.getByRole("heading", { name: "Brask Coalhand" }).waitFor();
+  const acAfter = await acNow();
+  const tabText = await page.locator("main").innerText();
+  check(acAfter === acBefore + 1 && /Hexblade Dagger/.test(tabText), "homebrew added just before a reload survives it");
+
   check(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(" | ")}` : ""}`);
   console.log(`\nAll checks passed. Screenshots in ${SHOTS}`);
 } catch (e) {

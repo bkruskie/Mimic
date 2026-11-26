@@ -3,6 +3,7 @@ import { longRest, setResourceSpent, shortRest, type ResourceDef } from "@mimicb
 import { roll } from "@mimicbox/dice";
 import { useState } from "react";
 import { Explain } from "../../components/Explain";
+import { AttackForm } from "../../components/homebrew";
 import { content } from "../../lib/state";
 import { Drawer, type SheetProps } from "../SheetScreen";
 
@@ -14,6 +15,8 @@ const resetText: Record<ResourceDef["reset"], string> = {
 
 export function ActionsTab({ character, sheet, update, ask }: SheetProps) {
   const [rest, setRest] = useState<"short" | "long" | null>(null);
+  const [attackForm, setAttackForm] = useState<{ id: string | null } | null>(null);
+  const customAttacks = character.homebrew?.attacks ?? [];
   return (
     <>
       <section className="section">
@@ -67,12 +70,21 @@ export function ActionsTab({ character, sheet, update, ask }: SheetProps) {
                 </ul>
               )}
               <Explain label="Where the attack bonus comes from" value={a.toHit} />
+              {a.id.startsWith("custom:") && (
+                <button className="btn btn-quiet small" style={{ marginTop: 4 }} onClick={() => setAttackForm({ id: a.id.slice("custom:".length) })}>
+                  Edit {a.name}
+                </button>
+              )}
             </li>
           ))}
         </ul>
         <p className="muted small" style={{ marginTop: 8 }}>
           Equip weapons in Gear to see them here. Tap Hit to roll the attack, then roll damage from the result.
         </p>
+        <button className="btn" style={{ marginTop: 10 }} onClick={() => setAttackForm({ id: null })}>
+          Add an attack
+        </button>
+        {attackForm && <AttackForm attack={customAttacks.find((x) => x.id === attackForm.id) ?? null} update={update} onClose={() => setAttackForm(null)} />}
       </section>
 
       {sheet.resources.length > 0 && (
