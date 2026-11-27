@@ -292,7 +292,7 @@ The DM Studio uses this same core over the loopback channel. It is just the clie
 
 ### Visual identity and assets
 
-The default look is warm and readable rather than ornate: dark charcoal-brown surfaces, parchment text, a brass accent, and a light parchment theme for bright rooms and projectors. Each rule system gets a theme as a token set: warm brass for D&D, deep red and gold for Pathfinder (without copying Paizo's trade dress), and a dark synthwave magenta and cyan for Neon Odyssey. The campaign's system picks the theme, and the DM can override it.
+The default look is warm and readable rather than ornate: dark charcoal-brown surfaces, parchment text, a brass accent, and a light parchment theme for bright rooms and projectors. Each rule system gets a theme as a token set: warm brass for D&D, deep red and gold for Pathfinder (without copying Paizo's trade dress), and a dark synthwave magenta and cyan for Neon Odyssey. Built so far: the dark default and a light Parchment theme, chosen per device (dark, light or match the device) and followed by the table display, with a fine generated grain, a lamp glow and lacquered panels as texture (`docs/design.md`). The system themes arrive with their rulesets; the campaign's system will pick the theme, and each device can still choose light or dark.
 
 Secrecy is visible at a glance: DM-only content wears a dashed violet "veil" outline with an eye-slash icon, everywhere it appears, and display-visible content shows a small screen badge. Colour never carries meaning alone.
 

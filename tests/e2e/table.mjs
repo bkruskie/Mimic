@@ -214,6 +214,14 @@ try {
   check(!/Flood the lower city/.test(await display.locator("main").innerText()), "but never the hidden one");
   await eventually(async () => display.locator(".display-handout img.handout-image").evaluateAll((imgs) => imgs.length === 1 && imgs[0].naturalWidth > 0), "the display shows its picture too");
   await shot(display, "display-handout");
+  // A bright room: the DM picks the light theme and the display opened from the studio follows.
+  await dmTo(dm.page, "campaign");
+  await dm.page.getByRole("group", { name: "Theme" }).getByRole("button", { name: "Light" }).click();
+  await eventually(async () => (await display.evaluate(() => document.documentElement.dataset.theme)) === "light", "the DM switches to the light theme and the table display follows");
+  await shot(display, "display-light");
+  await dm.page.getByRole("group", { name: "Theme" }).getByRole("button", { name: "Dark" }).click();
+  await eventually(async () => (await display.evaluate(() => document.documentElement.dataset.theme)) === "dark", "and back to dark");
+  await dmTo(dm.page, "handouts");
   await dm.page.getByRole("article", { name: "The ferryman's letter" }).getByRole("button", { name: "Hide again" }).click();
   await eventually(async () => !/ferryman/.test(await display.locator("main").innerText()), "hiding it again takes it off the display");
 
@@ -731,6 +739,11 @@ try {
   await cabin.page.evaluate(() => navigator.serviceWorker.ready);
   await cabin.page.reload();
   check(await cabin.page.evaluate(() => !!navigator.serviceWorker.controller), "the studio installs itself for offline use");
+  // The studio keeps the bestiary for play without internet once it has fetched it in the background.
+  await eventually(
+    async () => cabin.page.evaluate(async () => (await caches.keys()).includes("mimicbox-bestiary") && (await (await caches.open("mimicbox-bestiary")).keys()).length > 0),
+    "and keeps the bestiary for later",
+  );
   await cabin.context.setOffline(true);
   await cabin.page.reload();
   await cabin.page.getByLabel("Campaign name").fill("Snowbound");

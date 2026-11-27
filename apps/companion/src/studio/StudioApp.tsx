@@ -46,6 +46,7 @@ import { StoredImage } from "./pictures";
 import { deleteCampaign, deleteImage, getCampaign, listCampaigns, loadImage, loadTiles, relaysFromAddress, saveCampaign, saveImage, saveTiles, type StudioCampaign } from "./store";
 import { MapEditor, MapsPanel } from "./MapsPanel";
 import { SessionPlay, SessionsPanel } from "./Sessions";
+import { ThemePicker } from "../components/ThemePicker";
 import { ScenePlay, ScenesPanel } from "./Scenes";
 import { EncountersPanel, RunEncounters } from "./Encounters";
 import { BestiaryAdd, StatBlock, useMonsters, type NewCombatant } from "./Bestiary";
@@ -163,7 +164,11 @@ function CampaignList() {
           </ul>
         </section>
       )}
-      <p className="muted small" style={{ marginTop: 24 }}>
+      <div className="row theme-row">
+        <span className="muted small">Theme on this device</span>
+        <ThemePicker />
+      </div>
+      <p className="muted small" style={{ marginTop: 12 }}>
         Players use the <a href="./">Mimic Box sheet</a>. Nothing here needs an account, and no server stores your game.
       </p>
     </main>
@@ -397,6 +402,13 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
             )}
             {prep === "campaign" && (
               <>
+                <section className="section">
+                  <h2>Theme</h2>
+                  <p className="muted small" style={{ marginTop: 4 }}>
+                    For this device. Light suits a bright room or a projector; the table display opened from here follows it.
+                  </p>
+                  <ThemePicker />
+                </section>
                 <section className="section">
                   <h2>Backup</h2>
                   <p className="muted small" style={{ marginTop: 4 }}>
