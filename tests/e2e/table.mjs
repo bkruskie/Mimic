@@ -526,6 +526,12 @@ try {
   const dmMapBox = await dm.page.locator(".play-map").boundingBox();
   const dmPanelBox = await dmPanel.boundingBox();
   check(dmPanelBox.y >= dmMapBox.y + dmMapBox.height - 1 && dmMapBox.width > 370, "on a phone, Play puts the map first, full width, and the panel below it");
+  const toolPicker = dm.page.getByRole("combobox", { name: "Map tool" });
+  const surfaceTop = (await dm.page.locator(".play-map .map-surface").boundingBox()).y;
+  const pickerCount = await toolPicker.count();
+  check(pickerCount === 1 && surfaceTop - dmMapBox.y < 230, `and its map tools are one picker, so the map starts near the top (${Math.round(surfaceTop - dmMapBox.y)} pixels down)`);
+  await toolPicker.selectOption("measure");
+  check((await dm.page.locator(".play-map").innerText()).includes("Drag from one square to another"), "the picker switches tools");
   await shot(dm.page, "dm-play-phone");
   await dm.page.setViewportSize(dmSize);
 
