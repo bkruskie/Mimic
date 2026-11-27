@@ -10,3 +10,4 @@ export { cellAt, cellBounds, cellCentre, cellDistance, cellPolygon, gridKind, gr
 export * from "./world.js";
 export * from "./lan.js";
 export * from "./encounters.js";
+export * from "./session.js";

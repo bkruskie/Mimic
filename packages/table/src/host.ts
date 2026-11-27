@@ -2,6 +2,7 @@
  * The DM's host: the one authority for a game. These are pure functions over the host's state, so the rules that
  * keep secrets and stop repeated actions can be tested without a network. The app wires them to a live link.
  */
+import type { Session } from "./session.js";
 import { CharacterImportError, derive, importCharacter, type Character, type Content } from "@mimicbox/ruleset-dnd5e";
 import { actingTokenId, publicCombat, setMemberInitiative, type Combat } from "./combat.js";
 import { activeMap, movePlayerToken, publicMap, togglePlayerDoor, type MapScene } from "./map.js";
@@ -73,6 +74,8 @@ export interface HostCampaign {
   /** Battle maps, and the one players see. */
   maps?: MapScene[];
   activeMapId?: string | null;
+  /** Sessions played, with their logs and recaps. DM-only: players see a recap only when it is shared as a handout. */
+  sessions?: Session[];
   /** Recently applied command ids, per member. */
   seen: Record<string, string[]>;
   createdAt: string;
