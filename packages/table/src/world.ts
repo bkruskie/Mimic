@@ -94,3 +94,60 @@ export function publicWorld(c: HostCampaign): PublicWorldEntry[] {
       imageId: e.image?.revealed ? e.image.id : null,
     }));
 }
+
+// ---------- pages: links, trails and quick reveals ----------
+
+interface Titled {
+  id: string;
+  title: string;
+  parentId: string | null;
+}
+
+/** The [[Name]] links in a text, in order, without duplicates. */
+export function linkNames(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(/\[\[([^\]\n]{1,120})\]\]/g)) {
+    const name = m[1]!.trim();
+    if (name && !out.some((x) => x.toLowerCase() === name.toLowerCase())) out.push(name);
+  }
+  return out;
+}
+
+/** The entry a [[Name]] link points at: same title, ignoring case and spaces at the ends. */
+export function findByTitle<T extends Titled>(entries: readonly T[], name: string): T | null {
+  const want = name.trim().toLowerCase();
+  return entries.find((e) => e.title.trim().toLowerCase() === want) ?? null;
+}
+
+/** The places an entry sits inside, outermost first: Saltmere Coast, then Port Ashen. */
+export function trail<T extends Titled>(entries: readonly T[], id: string): T[] {
+  const out: T[] = [];
+  let cur = entries.find((e) => e.id === id);
+  for (let guard = 0; cur?.parentId && guard < 50; guard++) {
+    const parent = entries.find((e) => e.id === cur!.parentId);
+    if (!parent) break;
+    out.unshift(parent);
+    cur = parent;
+  }
+  return out;
+}
+
+/** Entries whose text links to this one. `texts` gives each entry's text: all of it for the DM, revealed paragraphs for players. */
+export function mentionsOf<T extends Titled>(entries: readonly T[], id: string, texts: (e: T) => string[]): T[] {
+  const target = entries.find((e) => e.id === id);
+  if (!target) return [];
+  return entries.filter((e) => e.id !== id && texts(e).some((t) => linkNames(t).some((n) => findByTitle([target], n))));
+}
+
+const withEntry = (c: HostCampaign, id: string, fn: (e: WorldEntry) => WorldEntry): HostCampaign =>
+  touch({ ...c, world: (c.world ?? []).map((e) => (e.id === id ? { ...fn(e), updatedAt: new Date().toISOString() } : e)) });
+
+/** Players learn an entry exists, or forget it again. */
+export const setEntryRevealed = (c: HostCampaign, id: string, revealed: boolean) => withEntry(c, id, (e) => ({ ...e, revealed }));
+
+/** Shows one paragraph to players, or hides it again. */
+export const setBlockRevealed = (c: HostCampaign, id: string, blockId: string, revealed: boolean) =>
+  withEntry(c, id, (e) => ({ ...e, blocks: e.blocks.map((b) => (b.id === blockId ? { ...b, revealed } : b)) }));
+
+/** Shows the entry's picture to players, or hides it again. */
+export const setPictureRevealed = (c: HostCampaign, id: string, revealed: boolean) => withEntry(c, id, (e) => (e.image ? { ...e, image: { ...e.image, revealed } } : e));

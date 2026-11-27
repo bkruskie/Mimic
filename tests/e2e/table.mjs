@@ -449,7 +449,7 @@ try {
   const entry = dm.page.getByRole("form", { name: "World entry" });
   await world.getByRole("button", { name: "New place" }).click();
   await entry.getByLabel("Place name").fill("Port Ashen");
-  await entry.getByLabel("Paragraph 1").fill("A rain-soaked harbour town.");
+  await entry.getByLabel("Paragraph 1").fill("A rain-soaked harbour town. Ask for [[Mara the ferrywoman]].");
   await entry.getByRole("button", { name: "Only you" }).click();
   await entry.getByRole("checkbox", { name: "Players know about this place" }).check();
   await entry.getByLabel("Picture of Port Ashen").setInputFiles(join(FIXTURES, "docks.png"));
@@ -471,6 +471,10 @@ try {
   await entry.getByRole("checkbox", { name: "Players know about this person" }).check();
   await shot(dm.page, "dm-world");
   await entry.getByRole("button", { name: "Save person" }).click();
+  const maraPage = world.getByRole("article", { name: "Mara the ferrywoman" });
+  await maraPage.waitFor();
+  check(/Port Ashen/.test(await maraPage.locator(".entry-trail").innerText()) && (await maraPage.locator(".entry-block.veil").count()) === 1, "the DM sees Mara as a page: where she is, and her secret in the dashed outline");
+  await shot(dm.page, "dm-world-page");
   await eventually(async () => (await alice.page.getByRole("button", { name: "Journal" }).count()) > 0, "Alice's sheet gets a journal");
   await alice.page.getByRole("button", { name: "Journal" }).click();
   const journal = alice.page.getByRole("dialog");
@@ -478,9 +482,16 @@ try {
   const read = await journal.innerText();
   check(/Port Ashen/.test(read) && /In Port Ashen/.test(read) && /Grey cloak, kind eyes/.test(read), "Alice reads Port Ashen and Mara's public description");
   check(!/drowned god/i.test(read) && !/Drowned Vault/.test(read) && !/lighthouse/.test(read), "but not Mara's secret or the hidden place");
-  await journal.getByText("Port Ashen", { exact: true }).click();
+  await journal.locator(".entry-trail").getByRole("button", { name: "Port Ashen" }).click();
   await eventually(async () => journal.locator("img.handout-image").evaluateAll((imgs) => imgs.length === 1 && imgs[0].alt === "Port Ashen" && imgs[0].naturalWidth > 0), "Alice sees Port Ashen's picture, and not Mara's hidden portrait");
   await shot(alice.page, "alice-journal");
+  await journal.locator(".prose").getByRole("button", { name: "Mara the ferrywoman" }).click();
+  await journal.getByRole("heading", { name: "Mara the ferrywoman" }).waitFor();
+  check(true, "a [[link]] in Port Ashen's text takes Alice to Mara's page");
+  await maraPage.getByRole("button", { name: "Paragraph only for you. Show it to players." }).click();
+  await eventually(async () => /drowned god/.test(await journal.innerText()), "the DM shows Mara's secret from her page, and Alice reads it");
+  await maraPage.getByRole("button", { name: "Paragraph shown to players. Hide it." }).last().click();
+  await eventually(async () => !/drowned god/.test(await journal.innerText()), "hiding it again takes it out of Alice's journal");
   await alice.page.keyboard.press("Escape");
 
   // ----- Replacing the link keeps out anyone holding the old one -----
@@ -604,7 +615,7 @@ try {
   await cabin.page.waitForTimeout(500);
   await cabin.page.reload();
   await cabin.page.getByRole("heading", { name: "Snowbound" }).waitFor(); // the address keeps the campaign open
-  await cabinWorld.getByText("Hollow Keep").waitFor();
+  await cabinWorld.getByRole("heading", { name: "Hollow Keep" }).waitFor();
   check(true, "the world prepared offline is still there after a reload");
 
   await cabin.context.setOffline(false);

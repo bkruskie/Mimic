@@ -1,19 +1,26 @@
 /**
  * A small Markdown renderer for rules text from content packs: paragraphs, headings, lists, tables,
  * block quotes, bold and italic. It builds React elements, never HTML strings, so pack text can't inject markup.
+ * World notes add [[Name]] links: the `link` prop turns a name into an element, or returns null to leave it as text
+ * (a player's journal does that for entries they haven't learned about).
  */
 import { Fragment, type ReactNode } from "react";
 
-function inline(text: string, keyBase: string): ReactNode[] {
+export type WikiLink = (name: string, key: string) => ReactNode | null;
+
+function inline(text: string, keyBase: string, link?: WikiLink): ReactNode[] {
   const out: ReactNode[] = [];
-  const re = /(\*\*\*[^*]+\*\*\*|\*\*_?[^*]+?_?\*\*|\*[^*\s][^*]*\*|_[^_\s][^_]*_)/g;
+  const re = /(\[\[[^\]\n]{1,120}\]\]|\*\*\*[^*]+\*\*\*|\*\*_?[^*]+?_?\*\*|\*[^*\s][^*]*\*|_[^_\s][^_]*_)/g;
   let last = 0;
   let i = 0;
   for (const m of text.matchAll(re)) {
     if (m.index! > last) out.push(text.slice(last, m.index));
     const token = m[0];
     const key = `${keyBase}-${i++}`;
-    if (token.startsWith("***")) out.push(<strong key={key}><em>{token.slice(3, -3)}</em></strong>);
+    if (token.startsWith("[[")) {
+      const name = token.slice(2, -2).trim();
+      out.push(link?.(name, key) ?? name);
+    } else if (token.startsWith("***")) out.push(<strong key={key}><em>{token.slice(3, -3)}</em></strong>);
     else if (token.startsWith("**")) out.push(<strong key={key}>{token.slice(2, -2).replace(/^_|_$/g, "")}</strong>);
     else out.push(<em key={key}>{token.slice(1, -1)}</em>);
     last = m.index! + token.length;
@@ -29,7 +36,7 @@ const cells = (line: string) =>
     .split("|")
     .map((c) => c.trim());
 
-export function Markdown({ text, className = "prose" }: { text: string; className?: string }) {
+export function Markdown({ text, className = "prose", link }: { text: string; className?: string; link?: WikiLink }) {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const blocks: ReactNode[] = [];
   let i = 0;
@@ -45,7 +52,7 @@ export function Markdown({ text, className = "prose" }: { text: string; classNam
     if (heading) {
       const level = Math.min(6, Math.max(4, heading[1]!.length));
       const Tag = `h${level}` as "h4" | "h5" | "h6";
-      blocks.push(<Tag key={key}>{inline(heading[2]!.replace(/\*\*/g, ""), key)}</Tag>);
+      blocks.push(<Tag key={key}>{inline(heading[2]!.replace(/\*\*/g, ""), key, link)}</Tag>);
       i++;
       continue;
     }
@@ -67,12 +74,12 @@ export function Markdown({ text, className = "prose" }: { text: string; classNam
         <table key={key}>
           {hasHead && (
             <thead>
-              <tr>{head!.map((c, j) => <th key={j}>{inline(c, `${key}h${j}`)}</th>)}</tr>
+              <tr>{head!.map((c, j) => <th key={j}>{inline(c, `${key}h${j}`, link)}</th>)}</tr>
             </thead>
           )}
           <tbody>
             {(hasHead ? body : rows).map((r, ri) => (
-              <tr key={ri}>{r.map((c, j) => <td key={j}>{inline(c, `${key}${ri}-${j}`)}</td>)}</tr>
+              <tr key={ri}>{r.map((c, j) => <td key={j}>{inline(c, `${key}${ri}-${j}`, link)}</td>)}</tr>
             ))}
           </tbody>
         </table>,
@@ -98,7 +105,7 @@ export function Markdown({ text, className = "prose" }: { text: string; classNam
         i++;
       }
       const List = ordered ? "ol" : "ul";
-      blocks.push(<List key={key}>{items.map((it, j) => <li key={j}>{inline(it, `${key}${j}`)}</li>)}</List>);
+      blocks.push(<List key={key}>{items.map((it, j) => <li key={j}>{inline(it, `${key}${j}`, link)}</li>)}</List>);
       continue;
     }
     const para: string[] = [];
@@ -110,7 +117,7 @@ export function Markdown({ text, className = "prose" }: { text: string; classNam
       para.push(line);
       i++;
     }
-    blocks.push(<p key={key}>{inline(para.join(" "), key)}</p>);
+    blocks.push(<p key={key}>{inline(para.join(" "), key, link)}</p>);
   }
   return className ? <div className={className}>{blocks}</div> : <Fragment>{blocks}</Fragment>;
 }
