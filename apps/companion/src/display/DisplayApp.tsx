@@ -11,12 +11,14 @@ export function DisplayApp() {
   const campaignId = location.hash.replace(/^#/, "");
   const [view, setView] = useState<DisplayView | null>(null);
   const [tiles, setTiles] = useState<Map<string, string>>(new Map());
+  const [images, setImages] = useState<Record<string, string>>({});
   useEffect(() => {
     if (!campaignId) return;
     const ch = new BroadcastChannel(displayChannelName(campaignId));
     ch.onmessage = (e) => {
-      const d = e.data as DisplayView | { t: "tile"; mapId: string; tx: number; ty: number; version: string; data: string };
+      const d = e.data as DisplayView | { t: "tile"; mapId: string; tx: number; ty: number; version: string; data: string } | { t: "image"; id: string; data: string };
       if (d?.t === "display" && Array.isArray(d.members)) setView(d);
+      else if (d?.t === "image" && typeof d.data === "string" && d.data.startsWith("data:image/")) setImages((prev) => ({ ...prev, [d.id]: d.data }));
       else if (d?.t === "tile" && typeof d.data === "string" && d.data.startsWith("data:image/")) setTiles((prev) => new Map(prev).set(`${d.mapId}:${d.tx}:${d.ty}:${d.version}`, d.data));
     };
     ch.postMessage({ t: "display-hello" });
@@ -100,6 +102,7 @@ export function DisplayApp() {
           {view.spotlight && (
             <article className="display-handout" aria-label={view.spotlight.title}>
               <h2>{view.spotlight.title}</h2>
+              {view.spotlight.imageId && images[view.spotlight.imageId] && <img className="handout-image" src={images[view.spotlight.imageId]} alt="" />}
               <Markdown text={view.spotlight.body} />
             </article>
           )}

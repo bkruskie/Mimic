@@ -3,7 +3,7 @@
  * imported file is checked; characters go through the ruleset's own import checks.
  */
 import { CharacterImportError, importCharacter, type Character, type Content } from "@mimicbox/ruleset-dnd5e";
-import { HANDOUT_MAX_LENGTH, type Handout, type HostCampaign, type Member } from "./host.js";
+import { HANDOUT_MAX_LENGTH, isImageData, type Handout, type HostCampaign, type Member } from "./host.js";
 import type { MapScene, Token } from "./map.js";
 import { QUEST_STATUSES, WORLD_KINDS, WORLD_TEXT_MAX, type WorldEntry } from "./world.js";
 import type { SharedRoll } from "./protocol.js";
@@ -19,13 +19,22 @@ export interface CampaignFile {
   campaign: Omit<HostCampaign, "room" | "key" | "seen">;
   /** Map images, as tiles keyed by map id and then "tx:ty". */
   tiles?: Record<string, Record<string, string>>;
+  /** Handout pictures, keyed by image id. */
+  images?: Record<string, string>;
 }
 
 export class CampaignImportError extends Error {}
 
-export function exportCampaign(c: HostCampaign, tiles?: Record<string, Record<string, string>>): CampaignFile {
+export function exportCampaign(c: HostCampaign, tiles?: Record<string, Record<string, string>>, images?: Record<string, string>): CampaignFile {
   const { room: _room, key: _key, seen: _seen, ...rest } = c;
-  return { format: CAMPAIGN_FORMAT, formatVersion: CAMPAIGN_FORMAT_VERSION, exportedAt: new Date().toISOString(), campaign: rest, ...(tiles ? { tiles } : {}) };
+  return {
+    format: CAMPAIGN_FORMAT,
+    formatVersion: CAMPAIGN_FORMAT_VERSION,
+    exportedAt: new Date().toISOString(),
+    campaign: rest,
+    ...(tiles ? { tiles } : {}),
+    ...(images && Object.keys(images).length ? { images } : {}),
+  };
 }
 
 const num = (x: unknown, min: number, max: number): x is number => typeof x === "number" && Number.isFinite(x) && x >= min && x <= max;
@@ -61,7 +70,7 @@ export function importCampaign(
   raw: unknown,
   content: Content,
   fresh: { room: string; key: string },
-): { campaign: HostCampaign; problems: string[]; tiles: Record<string, Record<string, string>> } {
+): { campaign: HostCampaign; problems: string[]; tiles: Record<string, Record<string, string>>; images: Record<string, string> } {
   if (!isRecord(raw) || raw.format !== CAMPAIGN_FORMAT) throw new CampaignImportError("That file isn't a Mimic Box campaign.");
   if (typeof raw.formatVersion !== "number" || raw.formatVersion < 1) throw new CampaignImportError("The campaign file has no valid version.");
   if (raw.formatVersion > CAMPAIGN_FORMAT_VERSION) throw new CampaignImportError("This campaign was saved by a newer version of Mimic Box. Update the app to open it.");
@@ -95,7 +104,17 @@ export function importCampaign(
       revealed: h.revealed === true && typeof h.revealedAt === "string",
       revealedAt: h.revealed === true && typeof h.revealedAt === "string" ? h.revealedAt : null,
       createdAt: typeof h.createdAt === "string" ? h.createdAt : new Date().toISOString(),
+      imageId: typeof h.imageId === "string" && h.imageId.length <= 64 ? h.imageId : null,
     }));
+  // Pictures come along only if a handout uses them and they are real images; a handout whose picture is missing keeps its text.
+  const images: Record<string, string> = {};
+  const fileImages = isRecord(raw.images) ? raw.images : {};
+  for (const h of handouts) {
+    if (!h.imageId) continue;
+    const data = fileImages[h.imageId];
+    if (isImageData(data)) images[h.imageId] = data;
+    else h.imageId = null;
+  }
   const maps = (Array.isArray(c.maps) ? c.maps : []).map(readMap).filter((m): m is MapScene => m !== null);
   const tiles: Record<string, Record<string, string>> = {};
   if (isRecord(raw.tiles)) {
@@ -124,6 +143,7 @@ export function importCampaign(
   const now = new Date().toISOString();
   return {
     tiles,
+    images,
     campaign: {
       id: c.id,
       name: c.name.slice(0, 80),

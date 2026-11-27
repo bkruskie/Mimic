@@ -638,6 +638,12 @@ function PartyDrawer({ onClose }: { onClose: () => void }) {
               <summary>
                 <span className="grow">{h.title}</span>
               </summary>
+              {h.imageId &&
+                (table.handoutImages[h.imageId] ? (
+                  <img className="handout-image" src={table.handoutImages[h.imageId]} alt={h.title} />
+                ) : (
+                  <p className="muted small">The picture is on its way.</p>
+                ))}
               <Markdown text={h.body} />
             </details>
           ))}

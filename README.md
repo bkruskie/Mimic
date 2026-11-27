@@ -17,7 +17,7 @@ A free, local-first tabletop roleplaying platform. Players keep their characters
 - The DM can deal damage, heal, give temporary hit points and set conditions on a connected player's sheet; the player is told what changed.
 - Maps: the DM adds a battle map image, lines up the grid, reveals squares and places tokens. Players see only revealed squares (the hidden parts are painted over before the picture leaves the DM's device) and drag their own token; anyone can measure distances. The DM can draw walls and doors and have squares revealed as the party explores; players open and close doors next to their token. In combat, the acting token glows on every map. The table display shows the map too.
 - Combat: the DM starts a fight with the party, adds creatures (hidden or not) and steps through turns; players roll initiative from their sheet and see when it's their turn.
-- Handouts: the DM writes letters and clues in private and shows them to the party and the table display when ready.
+- Handouts: the DM writes letters and clues in private and shows them to the party and the table display when ready, with an optional picture that is sent only once the handout is shown.
 - World notes: places, people, factions, quests and lore, nested by place. Each paragraph has its own reveal switch, so players read what they have learned in their journal and never the DM's secrets.
 - Prepare anywhere: after one visit the studio works with no connection. Everything saves on your computer, and hosting starts when you're back online.
 - Backups: the DM downloads a campaign file to keep or move to another computer; players back up every character in one file.

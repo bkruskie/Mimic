@@ -13,13 +13,14 @@ import {
   openLink,
   playerView,
   publicMap,
+  revealedHandouts,
   tilePlan,
   type Effect,
   type TableLink,
 } from "@mimicbox/table";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { coverTile } from "../lib/mapImages";
-import { loadTiles, saveCampaign, type StudioCampaign } from "./store";
+import { loadImage, loadTiles, saveCampaign, type StudioCampaign } from "./store";
 
 export type HostStatus = "starting" | "hosting" | "offline" | "error";
 
@@ -56,14 +57,30 @@ export function useHost(initial: StudioCampaign) {
   const sent = useRef(new Map<string, Set<string>>());
   const tileQueue = useRef<Promise<void>>(Promise.resolve());
 
-  /** Sends each player and the display the map tiles they don't have yet, covered where the fog is. */
+  /** Sends each player and the display the handout pictures and map tiles they don't have yet, covered where the fog is. */
   const syncTiles = useCallback(() => {
     tileQueue.current = tileQueue.current.then(async () => {
+      // Handout pictures first: only those of shown handouts, once per audience.
+      const audiences = [...[...connectedRef.current].filter((u) => ref.current.members[u]), ...(display.current ? ["display"] : [])];
+      for (const h of revealedHandouts(ref.current)) {
+        if (!h.imageId) continue;
+        const key = `image:${h.imageId}`;
+        const waiting = audiences.filter((a) => !sent.current.get(a)?.has(key));
+        if (!waiting.length) continue;
+        const data = await loadImage(h.imageId);
+        if (!data) continue;
+        const image = { t: "image" as const, v: PROTOCOL_VERSION, id: h.imageId, data };
+        for (const a of waiting) {
+          if (a === "display") display.current?.postMessage(image);
+          else link.current?.send(image, a);
+          if (!sent.current.has(a)) sent.current.set(a, new Set());
+          sent.current.get(a)!.add(key);
+        }
+      }
       const map = activeMap(ref.current);
       if (!map) return;
       if (!originals.current.has(map.id)) originals.current.set(map.id, await loadTiles(map.id));
       const source = originals.current.get(map.id)!;
-      const audiences = [...[...connectedRef.current].filter((u) => ref.current.members[u]), ...(display.current ? ["display"] : [])];
       for (const t of publicMap(map, null).tiles) {
         const key = `${map.id}:${t.tx}:${t.ty}:${t.version}`;
         const waiting = audiences.filter((a) => !sent.current.get(a)?.has(key));

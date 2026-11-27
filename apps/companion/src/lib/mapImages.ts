@@ -3,7 +3,7 @@
  * sent to anyone, every square they may not see is painted over on a canvas and the result re-encoded, so the
  * hidden pixels are not in what they receive.
  */
-import { MAX_MAP_EDGE, TILE_SIZE, tileColumns, tileRows, type Rect } from "@mimicbox/table";
+import { HANDOUT_IMAGE_EDGE, MAX_MAP_EDGE, TILE_SIZE, tileColumns, tileRows, type Rect } from "@mimicbox/table";
 
 const QUALITY = 0.85;
 
@@ -58,4 +58,20 @@ export async function coverTile(tile: string, cover: Rect[]): Promise<string> {
   ctx.fillStyle = "#120d14";
   for (const r of cover) ctx.fillRect(r.x, r.y, r.w, r.h);
   return c.toDataURL("image/jpeg", QUALITY);
+}
+
+/** Scales a picture for a handout and encodes it as JPEG on a white background (for transparent PNGs). */
+export async function scaleHandoutImage(file: File): Promise<string> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(url);
+    const scale = Math.min(1, HANDOUT_IMAGE_EDGE / Math.max(img.naturalWidth, img.naturalHeight));
+    const [c, ctx] = canvas(Math.max(1, Math.round(img.naturalWidth * scale)), Math.max(1, Math.round(img.naturalHeight * scale)));
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", QUALITY);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }

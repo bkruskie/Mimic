@@ -38,7 +38,8 @@ import { downloadJson, fileSafe } from "../lib/download";
 import qrcode from "qrcode-generator";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BackIcon } from "../lib/icons";
-import { deleteCampaign, getCampaign, listCampaigns, loadTiles, relaysFromAddress, saveCampaign, saveTiles, type StudioCampaign } from "./store";
+import { scaleHandoutImage } from "../lib/mapImages";
+import { deleteCampaign, deleteImage, getCampaign, listCampaigns, loadImage, loadTiles, relaysFromAddress, saveCampaign, saveImage, saveTiles, type StudioCampaign } from "./store";
 import { MapsPanel } from "./MapsPanel";
 import { WorldPanel } from "./WorldPanel";
 import { useHost } from "./useHost";
@@ -66,8 +67,9 @@ function CampaignList() {
   async function onImport(file: File) {
     setError(null);
     try {
-      const { campaign, problems, tiles } = importCampaign(JSON.parse(await file.text()), content, { room: randomSecret(), key: randomSecret() });
+      const { campaign, problems, tiles, images } = importCampaign(JSON.parse(await file.text()), content, { room: randomSecret(), key: randomSecret() });
       for (const [mapId, t] of Object.entries(tiles)) await saveTiles(mapId, new Map(Object.entries(t)));
+      for (const [id, data] of Object.entries(images)) await saveImage(id, data);
       const taken = (campaigns ?? []).some((c) => c.id === campaign.id);
       const c: StudioCampaign = { ...campaign, ...(taken ? { id: newId(), name: `${campaign.name} (copy)` } : {}), relays: relaysFromAddress() };
       await saveCampaign(c);
@@ -255,9 +257,17 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
             </section>
             <Handouts
               handouts={campaign.handouts ?? []}
-              onSave={(h) => update((c) => ({ ...c, ...saveHandout(c, h) }))}
+              onSave={(h) => {
+                const old = campaign.handouts?.find((x) => x.id === h.id)?.imageId;
+                update((c) => ({ ...c, ...saveHandout(c, h) }));
+                if (old && old !== h.imageId) void deleteImage(old);
+              }}
               onReveal={(id, revealed) => update((c) => ({ ...c, ...setHandoutRevealed(c, id, revealed) }))}
-              onRemove={(id) => update((c) => ({ ...c, ...removeHandout(c, id) }))}
+              onRemove={(id) => {
+                const old = campaign.handouts?.find((x) => x.id === id)?.imageId;
+                update((c) => ({ ...c, ...removeHandout(c, id) }));
+                if (old) void deleteImage(old);
+              }}
             />
             <WorldPanel campaign={campaign} update={update} />
           </div>
@@ -315,7 +325,12 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
                 onClick={async () => {
                   const tiles: Record<string, Record<string, string>> = {};
                   for (const m of campaign.maps ?? []) tiles[m.id] = Object.fromEntries(await loadTiles(m.id));
-                  downloadJson(exportCampaign(campaign, tiles), `${fileSafe(campaign.name, "campaign")}.mimicbox-campaign`);
+                  const images: Record<string, string> = {};
+                  for (const h of campaign.handouts ?? []) {
+                    const data = h.imageId ? await loadImage(h.imageId) : undefined;
+                    if (h.imageId && data) images[h.imageId] = data;
+                  }
+                  downloadJson(exportCampaign(campaign, tiles, images), `${fileSafe(campaign.name, "campaign")}.mimicbox-campaign`);
                 }}
               >
                 Download a backup
@@ -557,12 +572,22 @@ function Handouts({
   onRemove,
 }: {
   handouts: Handout[];
-  onSave: (h: Pick<Handout, "id" | "title" | "body">) => void;
+  onSave: (h: Pick<Handout, "id" | "title" | "body" | "imageId">) => void;
   onReveal: (id: string, revealed: boolean) => void;
   onRemove: (id: string) => void;
 }) {
-  const [editing, setEditing] = useState<{ id: string; title: string; body: string } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; title: string; body: string; imageId: string | null } | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
+  const [picture, setPicture] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
+  const pictureInput = useRef<HTMLInputElement>(null);
+  // Pictures added in the editor and not yet saved; dropped if the edit is cancelled.
+  const unsaved = useRef(new Set<string>());
+  const cancel = () => {
+    for (const id of unsaved.current) void deleteImage(id);
+    unsaved.current.clear();
+    setEditing(null);
+    setPicture({ busy: false, error: null });
+  };
   return (
     <section className="section">
       <h2>Handouts</h2>
@@ -578,13 +603,14 @@ function Handouts({
             </div>
             <details className="small" style={{ marginTop: 6 }}>
               <summary style={{ cursor: "pointer" }}>Read</summary>
+              {h.imageId && <StoredImage id={h.imageId} alt={h.title} />}
               <Markdown text={h.body} />
             </details>
             <div className="row" style={{ marginTop: 8 }}>
               <button className={h.revealed ? "btn" : "btn btn-primary"} onClick={() => onReveal(h.id, !h.revealed)}>
                 {h.revealed ? "Hide again" : "Show to the party"}
               </button>
-              <button className="btn btn-quiet" onClick={() => setEditing({ id: h.id, title: h.title, body: h.body })}>
+              <button className="btn btn-quiet" onClick={() => setEditing({ id: h.id, title: h.title, body: h.body, imageId: h.imageId ?? null })}>
                 Edit
               </button>
               {confirm === h.id ? (
@@ -605,8 +631,10 @@ function Handouts({
           className="panel stack handout-card"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!editing.title.trim()) return;
-            onSave({ id: editing.id, title: editing.title.trim(), body: editing.body });
+            if (!editing.title.trim() || picture.busy) return;
+            onSave({ id: editing.id, title: editing.title.trim(), body: editing.body, imageId: editing.imageId });
+            for (const id of unsaved.current) if (id !== editing.imageId) void deleteImage(id);
+            unsaved.current.clear();
             setEditing(null);
           }}
         >
@@ -625,23 +653,73 @@ function Handouts({
               placeholder="Use **bold** and *italic*. A blank line starts a new paragraph."
             />
           </label>
+          <div className="field">
+            <span>Picture</span>
+            {editing.imageId && <StoredImage id={editing.imageId} alt={`Picture for ${editing.title || "this handout"}`} />}
+            <div className="row">
+              <button type="button" className="btn" disabled={picture.busy} onClick={() => pictureInput.current?.click()}>
+                {picture.busy ? "Adding the picture…" : editing.imageId ? "Replace picture" : "Add a picture"}
+              </button>
+              {editing.imageId && (
+                <button type="button" className="btn btn-quiet" onClick={() => setEditing({ ...editing, imageId: null })}>
+                  Remove picture
+                </button>
+              )}
+            </div>
+            <input
+              ref={pictureInput}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              aria-label="Handout picture"
+              hidden
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file) return;
+                setPicture({ busy: true, error: null });
+                try {
+                  const id = newId();
+                  await saveImage(id, await scaleHandoutImage(file));
+                  unsaved.current.add(id);
+                  setEditing((cur) => (cur ? { ...cur, imageId: id } : cur));
+                  setPicture({ busy: false, error: null });
+                } catch (err) {
+                  setPicture({ busy: false, error: (err as Error).message });
+                }
+              }}
+            />
+            {picture.error && <p className="error small">{picture.error}</p>}
+          </div>
           <div className="row">
-            <button className="btn btn-primary" disabled={!editing.title.trim()}>
+            <button className="btn btn-primary" disabled={!editing.title.trim() || picture.busy}>
               Save handout
             </button>
-            <button type="button" className="btn" onClick={() => setEditing(null)}>
+            <button type="button" className="btn" onClick={cancel}>
               Cancel
             </button>
           </div>
           <p className="muted small">Saving doesn't show it to anyone. Use Show to the party when you're ready.</p>
         </form>
       ) : (
-        <button className="btn" style={{ marginTop: 10 }} onClick={() => setEditing({ id: newId(), title: "", body: "" })}>
+        <button className="btn" style={{ marginTop: 10 }} onClick={() => setEditing({ id: newId(), title: "", body: "", imageId: null })}>
           Write a handout
         </button>
       )}
     </section>
   );
+}
+
+/** A picture kept on this device, such as a handout's. */
+function StoredImage({ id, alt }: { id: string; alt: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadImage(id).then((d) => live && setSrc(d ?? null), () => live && setSrc(null));
+    return () => {
+      live = false;
+    };
+  }, [id]);
+  return src ? <img className="handout-image" src={src} alt={alt} /> : null;
 }
 
 function CombatPanel({
