@@ -11,3 +11,4 @@ export * from "./world.js";
 export * from "./lan.js";
 export * from "./encounters.js";
 export * from "./session.js";
+export * from "./scenes.js";

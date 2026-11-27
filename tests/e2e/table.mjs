@@ -86,7 +86,7 @@ async function dmTo(page, place) {
   const switcher = page.getByRole("group", { name: "Mode" }).getByRole("button", { name: mode });
   if ((await switcher.getAttribute("aria-pressed")) !== "true") await switcher.click();
   if (place === "play") return;
-  const names = { world: "World", maps: "Maps", encounters: "Encounters", handouts: "Handouts", sessions: "Sessions", players: "Players", campaign: "Campaign" };
+  const names = { world: "World", maps: "Maps", encounters: "Encounters", handouts: "Handouts", scenes: "Scenes", sessions: "Sessions", players: "Players", campaign: "Campaign" };
   const tab = page.getByRole("navigation", { name: "Prepare" }).getByRole("button", { name: names[place], exact: true });
   if ((await tab.getAttribute("aria-pressed")) !== "true") await tab.click();
 }
@@ -578,6 +578,45 @@ try {
   await dm.page.getByRole("region", { name: "Combat" }).getByRole("button", { name: "End combat" }).click();
   await dm.page.getByRole("button", { name: "End combat" }).first().click();
 
+  // ----- Scenes: the plan, in order, played one tap at a time -----
+  await dmTo(dm.page, "scenes");
+  const planScene = async (title, notes, pick) => {
+    await dm.page.getByRole("button", { name: "New scene" }).click();
+    const form = dm.page.getByRole("region", { name: "Scene", exact: true });
+    await form.getByLabel("Scene title").fill(title);
+    await form.getByLabel("Notes for you").fill(notes);
+    await pick(form);
+    await form.getByRole("button", { name: "Save scene" }).click();
+  };
+  await planScene("Arrival at the docks", "Mara waits by the **boat**.", async (form) => {
+    await form.getByLabel("Map").selectOption({ label: "docks" });
+    await form.getByRole("group", { name: "Handouts to give" }).getByLabel("The ferryman's letter").check();
+  });
+  await planScene("Trouble on the pier", "They strike when the bell rings.", (form) => form.getByLabel("Fight").selectOption({ label: "Docks ambush" }));
+  const plan = dm.page.getByRole("region", { name: "Scenes", exact: true });
+  await plan.getByRole("button", { name: "Move Trouble on the pier earlier" }).click();
+  check(/Trouble on the pier[\s\S]*Arrival at the docks/.test(await plan.innerText()), "the DM plans two scenes and reorders them");
+  await plan.getByRole("button", { name: "Move Trouble on the pier later" }).click();
+  check(/docks map, 1 handout/.test(await plan.innerText()) && /Docks ambush/.test(await plan.innerText()), "each lists what it gathers");
+  await shot(dm.page, "dm-scenes");
+  await dmTo(dm.page, "play");
+  const sceneBox = dm.page.getByRole("region", { name: "Scene", exact: true });
+  await sceneBox.getByRole("button", { name: "Begin Arrival at the docks" }).click();
+  await eventually(async () => /Mara waits by the boat/.test(await sceneBox.innerText()), "in Play, the first scene begins with the DM's notes");
+  check((await dm.page.getByRole("img", { name: "docks, as you see it" }).count()) === 1, "and its map showing");
+  await sceneBox.getByRole("button", { name: "Show The ferryman's letter" }).click();
+  await eventually(async () => (await sceneBox.getByRole("button", { name: "Hide The ferryman's letter" }).count()) === 1, "its handout is shown from the scene");
+  await sceneBox.getByRole("button", { name: "Hide The ferryman's letter" }).click();
+  await shot(dm.page, "dm-scene-play");
+  await sceneBox.getByRole("button", { name: "Next scene: Trouble on the pier" }).click();
+  await eventually(async () => (await sceneBox.getByRole("button", { name: "Run Docks ambush" }).count()) === 1, "Next moves on to the ambush, with its fight one tap away");
+  await sceneBox.getByRole("button", { name: "Finish scene" }).click();
+  await eventually(async () => /Every planned scene has been played/.test(await sceneBox.innerText()), "and finishing the last scene says the plan is done");
+  check(/Scene: Arrival at the docks/.test(await dm.page.getByRole("region", { name: "Session", exact: true }).innerText() + (await dm.page.getByRole("list", { name: "Session log" }).innerText())), "the session log marks where each scene began");
+  await alice.page.locator(".chip-table").click();
+  check(!/Arrival at the docks|Mara waits/.test(await alice.page.getByRole("dialog").innerText()), "and Alice never sees the plan");
+  await alice.page.keyboard.press("Escape");
+
   // ----- A reconnect doesn't repeat anything -----
   await dmTo(dm.page, "play");
   const rollsBefore = await dm.page.getByRole("list", { name: "Rolls" }).locator("li").count();
@@ -662,6 +701,8 @@ try {
   check(/Port Ashen/.test(laptopWorld) && /Mara the ferrywoman/.test(laptopWorld) && /The Drowned Vault/.test(laptopWorld), "with its world notes, secrets included");
   await dmTo(laptop.page, "sessions");
   check(/Session 1[\s\S]*Shared/.test(await laptop.page.getByRole("article", { name: "Session 1" }).innerText()), "with session 1 and its shared recap");
+  await dmTo(laptop.page, "scenes");
+  check(/Arrival at the docks[\s\S]*Trouble on the pier/.test(await laptop.page.getByRole("region", { name: "Scenes", exact: true }).innerText()), "and its scenes, in order");
   await dmTo(laptop.page, "maps");
   await laptop.page.getByRole("button", { name: /^docks/ }).click();
   await eventually(async () => (await laptop.page.getByRole("img", { name: "docks, as you see it" }).locator(".map-surface > img").count()) === 6, "the map and all six of its tiles come along");

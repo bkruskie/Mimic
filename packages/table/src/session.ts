@@ -9,7 +9,7 @@
  */
 import { saveHandout, setHandoutRevealed, type HostCampaign } from "./host.js";
 
-export const LOG_KINDS = ["session", "combat", "defeat", "roll", "reveal", "map", "party", "note"] as const;
+export const LOG_KINDS = ["session", "scene", "combat", "defeat", "roll", "reveal", "map", "party", "note"] as const;
 export type LogKind = (typeof LOG_KINDS)[number];
 
 export interface LogEvent {
@@ -124,7 +124,7 @@ export function draftRecap(s: Session): string {
   // Creatures added once a fight is under way join its opening line, so a fight reads as one line, not five.
   let fight: { at: number; names: string[] } | null = null;
   for (const e of s.events) {
-    if (e.kind === "session" || e.kind === "roll" || (e.kind === "combat" && /^Round \d+/.test(e.text))) continue;
+    if (e.kind === "session" || e.kind === "scene" || e.kind === "roll" || (e.kind === "combat" && /^Round \d+/.test(e.text))) continue;
     const began = e.kind === "combat" ? /^A fight began(?:: (.+))?\.$/.exec(e.text) : null;
     const joined = e.kind === "combat" ? /^(.+) joined the fight\.$/.exec(e.text) : null;
     if (began) {
@@ -157,6 +157,12 @@ const list = (names: string[]) => (names.length <= 1 ? names.join("") : `${names
 export function describeChanges(before: HostCampaign, after: HostCampaign, now: string): LogEvent[] {
   const out: LogEvent[] = [];
   const add = (kind: LogKind, text: string, flag?: LogEvent["flag"]) => out.push(flag ? { at: now, kind, text, flag } : { at: now, kind, text });
+
+  // The DM's own scenes: in the log as a marker, never in a recap, since their titles are the DM's.
+  if (after.currentSceneId && after.currentSceneId !== before.currentSceneId) {
+    const scene = (after.scenes ?? []).find((s) => s.id === after.currentSceneId);
+    if (scene) add("scene", `Scene: ${scene.title}.`);
+  }
 
   // Players joining. A player's character often arrives just after they do, so the line waits for it.
   for (const [id, m] of Object.entries(after.members)) {

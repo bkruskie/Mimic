@@ -46,6 +46,7 @@ import { StoredImage } from "./pictures";
 import { deleteCampaign, deleteImage, getCampaign, listCampaigns, loadImage, loadTiles, relaysFromAddress, saveCampaign, saveImage, saveTiles, type StudioCampaign } from "./store";
 import { MapEditor, MapsPanel } from "./MapsPanel";
 import { SessionPlay, SessionsPanel } from "./Sessions";
+import { ScenePlay, ScenesPanel } from "./Scenes";
 import { EncountersPanel, RunEncounters } from "./Encounters";
 import { BestiaryAdd, StatBlock, useMonsters, type NewCombatant } from "./Bestiary";
 import { Drawer } from "../components/Drawer";
@@ -386,6 +387,7 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
                 }}
               />
             )}
+            {prep === "scenes" && <ScenesPanel campaign={campaign} update={update} />}
             {prep === "sessions" && <SessionsPanel campaign={campaign} update={update} open={openSession} onOpen={setOpenSession} />}
             {prep === "players" && (
               <>
@@ -458,6 +460,7 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
             (wide ? (
               <SidePanel width={panel.width} onWidth={(width) => setPanel((l) => ({ ...l, width }))} label="Play panel">
                 {sessionPlay}
+                <ScenePlay campaign={campaign} update={update} />
                 {combatPanel}
                 <RunEncounters campaign={campaign} update={update} />
                 <ReadyToReveal handouts={campaign.handouts ?? []} onReveal={revealHandout} />
@@ -467,6 +470,7 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
             ) : (
               <aside className="play-below" aria-label="Play panel">
                 {sessionPlay}
+                <ScenePlay campaign={campaign} update={update} />
                 {combatPanel}
                 <RunEncounters campaign={campaign} update={update} />
                 <ReadyToReveal handouts={campaign.handouts ?? []} onReveal={revealHandout} />
@@ -482,9 +486,9 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
 
 const MODES = ["prepare", "play"] as const;
 type Mode = (typeof MODES)[number];
-const PREP_TABS = ["world", "maps", "encounters", "handouts", "sessions", "players", "campaign"] as const;
+const PREP_TABS = ["world", "maps", "encounters", "handouts", "scenes", "sessions", "players", "campaign"] as const;
 type PrepTab = (typeof PREP_TABS)[number];
-const PREP_NAMES: Record<PrepTab, string> = { world: "World", maps: "Maps", encounters: "Encounters", handouts: "Handouts", sessions: "Sessions", players: "Players", campaign: "Campaign" };
+const PREP_NAMES: Record<PrepTab, string> = { world: "World", maps: "Maps", encounters: "Encounters", handouts: "Handouts", scenes: "Scenes", sessions: "Sessions", players: "Players", campaign: "Campaign" };
 
 /** A choice remembered on this device, such as the studio's mode. */
 function useStoredChoice<T extends string>(key: string, options: readonly T[], fallback: T) {

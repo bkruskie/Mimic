@@ -3,6 +3,7 @@
  * keep secrets and stop repeated actions can be tested without a network. The app wires them to a live link.
  */
 import type { Session } from "./session.js";
+import type { Scene } from "./scenes.js";
 import { CharacterImportError, derive, importCharacter, type Character, type Content } from "@mimicbox/ruleset-dnd5e";
 import { actingTokenId, publicCombat, setMemberInitiative, type Combat } from "./combat.js";
 import { activeMap, movePlayerToken, publicMap, togglePlayerDoor, type MapScene } from "./map.js";
@@ -76,6 +77,9 @@ export interface HostCampaign {
   activeMapId?: string | null;
   /** Sessions played, with their logs and recaps. DM-only: players see a recap only when it is shared as a handout. */
   sessions?: Session[];
+  /** The DM's plan, in order, and the scene being played. DM-only. */
+  scenes?: Scene[];
+  currentSceneId?: string | null;
   /** Recently applied command ids, per member. */
   seen: Record<string, string[]>;
   createdAt: string;

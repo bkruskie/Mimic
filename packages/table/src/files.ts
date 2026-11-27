@@ -5,6 +5,7 @@
 import { CharacterImportError, importCharacter, type Character, type Content } from "@mimicbox/ruleset-dnd5e";
 import { readEncounters } from "./encounters.js";
 import { readSessions } from "./session.js";
+import { readScenes } from "./scenes.js";
 import { GRID_KINDS, type GridKind } from "./grid.js";
 import { HANDOUT_MAX_LENGTH, isImageData, type Handout, type HostCampaign, type Member } from "./host.js";
 import { PIN_LAYERS, PIN_TEXT_MAX, type MapScene, type Pin, type Token } from "./map.js";
@@ -151,6 +152,8 @@ export function importCampaign(
   const ids = new Set(world.map((e) => e.id));
   for (const e of world) if (e.parentId && !ids.has(e.parentId)) e.parentId = null;
   const now = new Date().toISOString();
+  const encounters = readEncounters(c.encounters, maps.map((m) => m.id));
+  const scenes = readScenes(c.scenes, { maps: maps.map((m) => m.id), encounters: encounters.map((e) => e.id), handouts: handouts.map((h) => h.id), entries: world.map((e) => e.id) });
   return {
     tiles,
     images,
@@ -164,8 +167,10 @@ export function importCampaign(
       handouts,
       maps,
       world,
-      encounters: readEncounters(c.encounters, maps.map((m) => m.id)),
+      encounters,
       sessions: readSessions(c.sessions, handouts.map((h) => h.id)),
+      scenes,
+      currentSceneId: scenes.some((s) => s.id === c.currentSceneId) ? (c.currentSceneId as string) : null,
       activeMapId: maps.some((m) => m.id === c.activeMapId) ? (c.activeMapId as string) : null,
       seen: {},
       createdAt: typeof c.createdAt === "string" ? c.createdAt : now,
