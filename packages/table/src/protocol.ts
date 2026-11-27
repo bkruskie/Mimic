@@ -48,6 +48,8 @@ export interface PublicHandout {
   title: string;
   /** Markdown text. */
   body: string;
+  /** The handout's picture, sent separately in an "image" message; null when it has none. */
+  imageId: string | null;
   revealedAt: string;
 }
 
@@ -77,6 +79,8 @@ export type HostMessage =
   | { t: "map"; v: number; map: PublicMap | null }
   | { t: "world"; v: number; entries: PublicWorldEntry[] }
   /** One map tile, already painted over where the fog is. */
+  /** A picture for a revealed handout, sent once per connection. */
+  | { t: "image"; v: number; id: string; data: string }
   | { t: "tile"; v: number; mapId: string; tx: number; ty: number; version: string; data: string }
   | { t: "ack"; v: number; commandId: string };
 
@@ -158,6 +162,8 @@ export function parseHostMessage(raw: unknown): HostMessage | null {
       return Array.isArray(raw.entries) ? (raw as HostMessage) : null;
     case "map":
       return raw.map === null || (isRecord(raw.map) && Array.isArray(raw.map.tiles) && Array.isArray(raw.map.tokens)) ? (raw as HostMessage) : null;
+    case "image":
+      return str(raw.id, 64) && typeof raw.data === "string" && raw.data.length <= 4_000_000 && /^data:image\/(jpeg|webp|png);base64,/.test(raw.data) ? (raw as HostMessage) : null;
     case "tile":
       return str(raw.mapId, 64) && Number.isInteger(raw.tx) && Number.isInteger(raw.ty) && typeof raw.version === "string" && typeof raw.data === "string" && /^data:image\/(jpeg|webp|png);base64,/.test(raw.data)
         ? (raw as HostMessage)

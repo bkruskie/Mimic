@@ -147,14 +147,18 @@ try {
   await shot(display, "display");
 
   // ----- Handouts: written in private, shown when the DM chooses -----
-  const writeHandout = async (title, body) => {
+  const writeHandout = async (title, body, picture) => {
     await dm.page.getByRole("button", { name: "Write a handout" }).click();
     await dm.page.getByLabel("Title").fill(title);
     await dm.page.getByLabel("Text").fill(body);
+    if (picture) {
+      await dm.page.getByLabel("Handout picture").setInputFiles(join(FIXTURES, picture));
+      await dm.page.getByRole("button", { name: "Replace picture" }).waitFor();
+    }
     await dm.page.getByRole("button", { name: "Save handout" }).click();
   };
-  await writeHandout("The ferryman's letter", "Meet me at the **Sunken Bell** at midnight.");
-  await writeHandout("Villain's plan", "Flood the lower city.");
+  await writeHandout("The ferryman's letter", "Meet me at the **Sunken Bell** at midnight.", "docks.png");
+  await writeHandout("Villain's plan", "Flood the lower city.", "docks.png");
   await alice.page.waitForTimeout(1000);
   await alice.page.locator(".chip-table").click();
   check(!/ferryman|Villain/.test(await alice.page.getByRole("dialog").innerText()), "saved handouts stay with the DM");
@@ -166,10 +170,15 @@ try {
   check(/The ferryman's letter/.test(drawer) && !/Villain's plan/.test(drawer), "Alice gets the shown handout and not the hidden one");
   await alice.page.getByRole("dialog").getByText("The ferryman's letter").click();
   check(/Meet me at the Sunken Bell at midnight/.test(await alice.page.getByRole("dialog").innerText()), "and can read it");
+  await eventually(
+    async () => alice.page.getByRole("dialog").locator("img.handout-image").evaluateAll((imgs) => imgs.length === 1 && imgs[0].complete && imgs[0].naturalWidth > 0),
+    "with its picture, and only that one picture",
+  );
   await shot(alice.page, "alice-handout");
   await alice.page.keyboard.press("Escape");
   await eventually(async () => /Meet me at the Sunken Bell/.test(await display.locator("main").innerText()), "the display shows the handout");
   check(!/Flood the lower city/.test(await display.locator("main").innerText()), "but never the hidden one");
+  await eventually(async () => display.locator(".display-handout img.handout-image").evaluateAll((imgs) => imgs.length === 1 && imgs[0].naturalWidth > 0), "the display shows its picture too");
   await shot(display, "display-handout");
   await dm.page.getByRole("article", { name: "The ferryman's letter" }).getByRole("button", { name: "Hide again" }).click();
   await eventually(async () => !/ferryman/.test(await display.locator("main").innerText()), "hiding it again takes it off the display");
@@ -436,6 +445,9 @@ try {
   await laptop.page.getByRole("heading", { name: "The Sunken Bell" }).waitFor();
   const moved = await text(laptop.page);
   check(/Wren Ashdown/.test(moved) && /Bram Hollis/.test(moved) && /Imported\. Send your players the invite link/.test(moved), "the other computer opens the campaign with its party");
+  const laptopLetter = laptop.page.getByRole("article", { name: "The ferryman's letter" });
+  await laptopLetter.getByText("Read").click();
+  await eventually(async () => laptopLetter.locator("img.handout-image").evaluateAll((imgs) => imgs.length === 1 && imgs[0].naturalWidth > 0), "with the handout's picture");
   const laptopWorld = await laptop.page.getByRole("region", { name: "World" }).innerText();
   check(/Port Ashen/.test(laptopWorld) && /Mara the ferrywoman/.test(laptopWorld) && /The Drowned Vault/.test(laptopWorld), "with its world notes, secrets included");
   await laptop.page.getByRole("button", { name: /^docks/ }).click();

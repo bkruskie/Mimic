@@ -73,3 +73,14 @@ export async function loadTiles(mapId: string): Promise<Map<string, string>> {
 }
 
 export const deleteTiles = (mapId: string) => run("readwrite", (s) => s.delete(IDBKeyRange.bound(`${mapId}:`, `${mapId}:\uffff`)), "tiles").then(() => undefined);
+
+/** Handout pictures, kept in the same store as map tiles under "image:<id>". */
+export const saveImage = (id: string, data: string) =>
+  run("readwrite", (s) => s.put(data, `image:${id}`), "tiles").then(
+    () => undefined,
+    () => {
+      throw new Error("Saving the picture failed. The device may be out of space.");
+    },
+  );
+export const loadImage = (id: string) => run<string | undefined>("readonly", (s) => s.get(`image:${id}`) as IDBRequest<string | undefined>, "tiles");
+export const deleteImage = (id: string) => run("readwrite", (s) => s.delete(`image:${id}`), "tiles").then(() => undefined);

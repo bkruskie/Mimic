@@ -38,10 +38,19 @@ export interface Handout {
   revealed: boolean;
   revealedAt: string | null;
   createdAt: string;
+  /** A picture kept on the DM's device by this id, sent to players only once the handout is shown. */
+  imageId?: string | null;
 }
 
 /** Longest handout text accepted, in characters. */
 export const HANDOUT_MAX_LENGTH = 20000;
+/** Handout pictures are scaled so their longest edge is at most this many pixels. */
+export const HANDOUT_IMAGE_EDGE = 1600;
+/** Largest handout picture accepted, as a data URL, in characters (about 3 MB of image). */
+export const IMAGE_MAX_CHARS = 4_000_000;
+/** A handout picture as a data URL: JPEG, PNG or WebP, within the size limit. */
+export const isImageData = (v: unknown): v is string =>
+  typeof v === "string" && v.length <= IMAGE_MAX_CHARS && /^data:image\/(jpeg|webp|png);base64,[A-Za-z0-9+/=]+$/.test(v);
 
 /** A campaign as the DM's device stores it. */
 export interface HostCampaign {
@@ -162,12 +171,11 @@ export function addDmRoll(campaign: HostCampaign, roll: Omit<SharedRoll, "id" | 
 }
 
 /** Adds or updates a handout. New handouts start hidden. */
-export function saveHandout(campaign: HostCampaign, h: Pick<Handout, "id" | "title" | "body">): HostCampaign {
+export function saveHandout(campaign: HostCampaign, h: Pick<Handout, "id" | "title" | "body" | "imageId">): HostCampaign {
   const list = campaign.handouts ?? [];
   const existing = list.find((x) => x.id === h.id);
-  const next: Handout = existing
-    ? { ...existing, title: h.title.slice(0, 120), body: h.body.slice(0, HANDOUT_MAX_LENGTH) }
-    : { id: h.id, title: h.title.slice(0, 120), body: h.body.slice(0, HANDOUT_MAX_LENGTH), revealed: false, revealedAt: null, createdAt: now() };
+  const content = { title: h.title.slice(0, 120), body: h.body.slice(0, HANDOUT_MAX_LENGTH), imageId: h.imageId ?? null };
+  const next: Handout = existing ? { ...existing, ...content } : { id: h.id, ...content, revealed: false, revealedAt: null, createdAt: now() };
   return touch({ ...campaign, handouts: existing ? list.map((x) => (x.id === h.id ? next : x)) : [...list, next] });
 }
 
@@ -185,7 +193,7 @@ export function revealedHandouts(campaign: HostCampaign): PublicHandout[] {
   return (campaign.handouts ?? [])
     .filter((h) => h.revealed && h.revealedAt)
     .sort((a, b) => a.revealedAt!.localeCompare(b.revealedAt!))
-    .map((h) => ({ id: h.id, title: h.title, body: h.body, revealedAt: h.revealedAt! }));
+    .map((h) => ({ id: h.id, title: h.title, body: h.body, imageId: h.imageId ?? null, revealedAt: h.revealedAt! }));
 }
 
 /** Removes a player from the campaign. Their invite key still works until the DM replaces the link. */

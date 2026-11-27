@@ -1413,3 +1413,17 @@ details.feature[open] {
   z-index: 1;
 }
 .world-block { padding: 10px 12px; border-radius: var(--r-md); background: var(--hollow); }
+
+/* Handout pictures: never wider than their card, never taller than most of the screen. */
+.handout-image {
+  display: block;
+  max-width: 100%;
+  max-height: 60vh;
+  margin: 8px 0;
+  border-radius: 6px;
+  object-fit: contain;
+}
+.display-handout .handout-image {
+  max-height: 45vh;
+  margin: 12px auto;
+}
