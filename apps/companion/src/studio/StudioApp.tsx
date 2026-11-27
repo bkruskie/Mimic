@@ -35,7 +35,7 @@ import {
 } from "@mimicbox/table";
 import { Markdown } from "../lib/markdown";
 import { downloadJson, fileSafe } from "../lib/download";
-import qrcode from "qrcode-generator";
+import { QrCode, QrScanner } from "../components/qr";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BackIcon } from "../lib/icons";
 import { scaleHandoutImage } from "../lib/mapImages";
@@ -203,7 +203,7 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
                   : host.status === "starting"
                     ? "Starting to host…"
                     : host.status === "offline"
-                      ? "You're offline. Keep preparing: everything saves on this computer. Players can join when you're back online."
+                      ? "You're offline. Keep preparing: everything saves on this computer. Players on this Wi-Fi can join with Add a player without internet."
                     : "Couldn't reach the signalling networks. Check this device is online, then reload the page."}
               </div>
             </div>
@@ -280,7 +280,7 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
                     Players open this link on their phone or computer and choose a character. Anyone with the link can join, so share it only with your group.
                   </p>
                   <div className="invite">
-                    <QrCode text={host.inviteUrl} />
+                    <QrCode text={host.inviteUrl} label="QR code of the invite link" />
                     <div className="stack" style={{ minWidth: 0, flex: 1 }}>
                       <input className="input" readOnly value={host.inviteUrl} aria-label="Invite link" onFocus={(e) => e.currentTarget.select()} />
                       <div className="row">
@@ -312,6 +312,7 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
               ) : (
                 <p className="muted">{host.status === "offline" ? "The invite link appears when this computer is back online." : "Preparing the invite link…"}</p>
               )}
+              <LanInvite start={host.startLanPlayer} connected={host.connected} />
             </section>
             <DmDice onRoll={(r) => update((c) => ({ ...c, ...addDmRoll(c, r, newId) }))} />
             <RollLog rolls={campaign.rolls} />
@@ -365,15 +366,143 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
   );
 }
 
-function QrCode({ text }: { text: string }) {
-  const svg = useMemo(() => {
-    const qr = qrcode(0, "M");
-    qr.addData(text);
-    qr.make();
-    return qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
-  }, [text]);
-  // The SVG is generated here from the invite link, not taken from anywhere else.
-  return <div className="qr" role="img" aria-label="QR code of the invite link" dangerouslySetInnerHTML={{ __html: svg }} />;
+type LanStep =
+  | { at: "idle" }
+  | { at: "making" }
+  | { at: "code"; code: string; accept: (reply: string) => Promise<{ player: string }>; cancel: () => void; scanning: boolean; reply: string; busy: boolean }
+  | { at: "connecting"; player: string };
+
+/** Adding a player on this network without internet: show a code, then read the player's reply (ADR 0006). */
+function LanInvite({
+  start,
+  connected,
+}: {
+  start: () => Promise<{ code: string; accept: (reply: string) => Promise<{ player: string }>; cancel: () => void }>;
+  connected: string[];
+}) {
+  const [step, setStep] = useState<LanStep>({ at: "idle" });
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const cancelRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => cancelRef.current?.(), []);
+  useEffect(() => {
+    if (step.at === "connecting" && connected.includes(step.player)) setStep({ at: "idle" });
+  }, [step, connected]);
+  const finish = async (reply: string) => {
+    if (step.at !== "code" || step.busy) return;
+    setError(null);
+    setStep({ ...step, busy: true, scanning: false });
+    try {
+      const { player } = await step.accept(reply);
+      cancelRef.current = null;
+      setStep({ at: "connecting", player });
+    } catch (e) {
+      setError((e as Error).message);
+      setStep({ ...step, busy: false, scanning: false });
+    }
+  };
+  if (step.at === "idle" || step.at === "making") {
+    return (
+      <div className="stack" style={{ marginTop: 16 }}>
+        <h3>No internet?</h3>
+        <p className="muted small">Players on the same Wi-Fi as this computer can join without internet. You scan each other's codes; their phone needs to have opened Mimic Box once before.</p>
+        <button
+          className="btn"
+          disabled={step.at === "making"}
+          onClick={async () => {
+            setError(null);
+            setCopied(false);
+            setStep({ at: "making" });
+            try {
+              const s = await start();
+              cancelRef.current = s.cancel;
+              setStep({ at: "code", ...s, scanning: false, reply: "", busy: false });
+            } catch {
+              setStep({ at: "idle" });
+              setError("This browser couldn't make a code. Try again, or use the invite link instead.");
+            }
+          }}
+        >
+          {step.at === "making" ? "Making a code…" : "Add a player without internet"}
+        </button>
+        {error && <p className="error small">{error}</p>}
+      </div>
+    );
+  }
+  if (step.at === "connecting") {
+    return (
+      <div className="stack" style={{ marginTop: 16 }}>
+        <h3>No internet?</h3>
+        <p className="muted small" role="status">
+          Connecting to the player… If nothing happens within a minute, check you're both on the same Wi-Fi and start again.
+        </p>
+        <button className="btn" onClick={() => setStep({ at: "idle" })}>
+          Start again
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="stack" style={{ marginTop: 16 }} aria-label="Add a player without internet" role="group">
+      <p className="muted small">Adding a player on this Wi-Fi without internet. One code per player.</p>
+      <h3>1. The player scans this</h3>
+      <p className="muted small">On their phone: Join a game, then Join on the DM's network.</p>
+      <QrCode text={step.code} label="QR code for the player" level="L" />
+      <div className="row">
+        <input className="input" readOnly value={step.code} aria-label="Code for the player" onFocus={(e) => e.currentTarget.select()} style={{ flex: 1, minWidth: 0 }} />
+        <button
+          className="btn"
+          onClick={() =>
+            navigator.clipboard?.writeText(step.code).then(
+              () => setCopied(true),
+              () => setCopied(false),
+            )
+          }
+        >
+          {copied ? "Copied" : "Copy code"}
+        </button>
+      </div>
+      <h3>2. Scan their reply</h3>
+      {step.scanning ? (
+        <QrScanner
+          accept={(text) => {
+            if (!text.includes("MB-LAN1.")) return false;
+            void finish(text);
+            return true;
+          }}
+          onClose={() => setStep({ ...step, scanning: false })}
+        />
+      ) : (
+        <button className="btn btn-primary" disabled={step.busy} onClick={() => setStep({ ...step, scanning: true })}>
+          Scan their reply
+        </button>
+      )}
+      <form
+        className="row"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void finish(step.reply);
+        }}
+      >
+        <input className="input" style={{ flex: 1, minWidth: 0 }} value={step.reply} onChange={(e) => setStep({ ...step, reply: e.target.value })} aria-label="Player's reply" placeholder="Or paste their reply code" />
+        <button className="btn" disabled={!step.reply.trim() || step.busy}>
+          Connect
+        </button>
+      </form>
+      {error && <p className="error small">{error}</p>}
+      <button
+        className="btn btn-quiet"
+        onClick={() => {
+          step.cancel();
+          cancelRef.current = null;
+          setStep({ at: "idle" });
+          setError(null);
+        }}
+      >
+        Cancel
+      </button>
+    </div>
+  );
 }
 
 function MemberCard({ member, here, onEffect, onRemove }: { member: Member; here: boolean; onEffect: (e: Effect) => boolean; onRemove: () => void }) {

@@ -587,9 +587,16 @@ function PartyDrawer({ onClose }: { onClose: () => void }) {
           {table.status === "connected"
             ? "Connected to your DM. Your sheet and rolls are shared with the table as you play."
             : table.status === "waiting"
-              ? "Waiting for your DM's app. It connects by itself when the DM starts hosting."
+              ? table.seat?.lan
+                ? "The connection to the DM's computer dropped. Ask the DM for a new code and scan it to reconnect; nothing you do meanwhile is lost."
+                : "Waiting for your DM's app. It connects by itself when the DM starts hosting."
               : "Connecting…"}
         </p>
+      )}
+      {table.seat?.lan && table.status !== "connected" && (
+        <button className="btn btn-primary" onClick={() => go({ name: "join", code: null })}>
+          Scan a new code
+        </button>
       )}
       {table.combat && (
         <>

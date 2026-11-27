@@ -17,6 +17,7 @@
     "@mimicbox/local-store": "workspace:*",
     "@mimicbox/ruleset-dnd5e": "workspace:*",
     "@mimicbox/table": "workspace:*",
+    "jsqr": "1.4.0",
     "qrcode-generator": "2.0.4",
     "react": "19.3.1",
     "react-dom": "19.3.1"

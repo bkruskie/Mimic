@@ -15,7 +15,10 @@ import {
   publicMap,
   revealedHandouts,
   tilePlan,
+  LanCodeError,
+  startLanHost,
   type Effect,
+  type LanPeer,
   type TableLink,
 } from "@mimicbox/table";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -57,6 +60,21 @@ export function useHost(initial: StudioCampaign) {
   const sent = useRef(new Map<string, Set<string>>());
   const tileQueue = useRef<Promise<void>>(Promise.resolve());
 
+  // Players on the DM's network without internet (ADR 0006), by their local device id.
+  const lanPeers = useRef(new Map<string, LanPeer>());
+
+  /** Sends to one player, over whichever link they came in on; with no one named, to every player. */
+  const sendTo = useCallback((msg: unknown, userId?: string) => {
+    if (!userId) {
+      link.current?.send(msg);
+      for (const p of lanPeers.current.values()) p.send(msg);
+      return;
+    }
+    const lan = lanPeers.current.get(userId);
+    if (lan) lan.send(msg);
+    else link.current?.send(msg, userId);
+  }, []);
+
   /** Sends each player and the display the handout pictures and map tiles they don't have yet, covered where the fog is. */
   const syncTiles = useCallback(() => {
     tileQueue.current = tileQueue.current.then(async () => {
@@ -72,7 +90,7 @@ export function useHost(initial: StudioCampaign) {
         const image = { t: "image" as const, v: PROTOCOL_VERSION, id: h.imageId, data };
         for (const a of waiting) {
           if (a === "display") display.current?.postMessage(image);
-          else link.current?.send(image, a);
+          else sendTo(image, a);
           if (!sent.current.has(a)) sent.current.set(a, new Set());
           sent.current.get(a)!.add(key);
         }
@@ -95,7 +113,7 @@ export function useHost(initial: StudioCampaign) {
         const tile = { t: "tile" as const, v: PROTOCOL_VERSION, mapId: map.id, tx: t.tx, ty: t.ty, version: t.version, data };
         for (const a of waiting) {
           if (a === "display") display.current?.postMessage(tile);
-          else link.current?.send(tile, a);
+          else sendTo(tile, a);
           if (!sent.current.has(a)) sent.current.set(a, new Set());
           sent.current.get(a)!.add(key);
         }
@@ -108,7 +126,7 @@ export function useHost(initial: StudioCampaign) {
     const now = connectedRef.current;
     for (const userId of now) {
       if (!c.members[userId]) continue;
-      for (const m of playerView(c, now, content, userId)) link.current?.send(m, userId);
+      for (const m of playerView(c, now, content, userId)) sendTo(m, userId);
     }
     display.current?.postMessage(displayView(c, now, content));
     syncTiles();
@@ -126,10 +144,87 @@ export function useHost(initial: StudioCampaign) {
     [broadcast],
   );
 
+  const changedConnections = useCallback(() => {
+    setConnected([...connectedRef.current]);
+    broadcast();
+  }, [broadcast]);
+  const peerJoined = useCallback(
+    (userId: string) => {
+      connectedRef.current.add(userId);
+      sent.current.delete(userId);
+      changedConnections();
+    },
+    [changedConnections],
+  );
+  const peerLeft = useCallback(
+    (userId: string) => {
+      connectedRef.current.delete(userId);
+      sent.current.delete(userId);
+      changedConnections();
+    },
+    [changedConnections],
+  );
+  const received = useCallback(
+    (raw: unknown, from: string) => {
+      const result = handlePlayerMessage(ref.current, from, raw, content, newId);
+      for (const r of result.replies) sendTo(r.msg, r.to);
+      if (result.campaign !== ref.current) setCampaign({ ...ref.current, ...result.campaign }, result.changed);
+    },
+    [sendTo, setCampaign],
+  );
+
+  /**
+   * Adds a player on this network without internet: returns the code to show them, and a way to finish with
+   * their reply. The player then says hello with the campaign key like any other player.
+   */
+  const startLanPlayer = useCallback(async () => {
+    const { code, peer, accept } = await startLanHost(ref.current.name, ref.current.key);
+    let accepted = false;
+    return {
+      code,
+      accept: async (reply: string) => {
+        const answer = await accept(reply);
+        if (!answer.player.startsWith("lan-")) throw new LanCodeError("That reply code is incomplete. Ask the player to join again.");
+        accepted = true;
+        const id = answer.player;
+        peer.onMessage((m) => {
+          if (lanPeers.current.get(id) === peer) received(m, id);
+        });
+        peer.onOpen(() => {
+          const old = lanPeers.current.get(id);
+          lanPeers.current.set(id, peer);
+          old?.close(); // The same device joining again replaces its older connection.
+          peerJoined(id);
+        });
+        peer.onClose(() => {
+          if (lanPeers.current.get(id) !== peer) return;
+          lanPeers.current.delete(id);
+          peerLeft(id);
+        });
+        return answer;
+      },
+      cancel: () => {
+        if (!accepted) peer.close();
+      },
+    };
+  }, [received, peerJoined, peerLeft]);
+
+  // A replaced invite link also ends local-network connections: their key no longer works.
+  const firstKey = useRef(campaign.key);
+  useEffect(() => {
+    if (campaign.key === firstKey.current) return;
+    firstKey.current = campaign.key;
+    for (const p of [...lanPeers.current.values()]) p.close();
+  }, [campaign.key]);
+  useEffect(() => () => {
+    for (const p of lanPeers.current.values()) p.close();
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    connectedRef.current = new Set();
-    setConnected([]);
+    // Players on the local network stay connected whether or not this computer is online.
+    connectedRef.current = new Set([...lanPeers.current].filter(([, p]) => p.isOpen()).map(([id]) => id));
+    setConnected([...connectedRef.current]);
     // With no connection the DM can still prepare: everything saves on this device. Hosting starts when it's back.
     if (!online) {
       setStatus("offline");
@@ -148,25 +243,9 @@ export function useHost(initial: StudioCampaign) {
       link.current = l;
       setHostId(await l.self());
       setStatus("hosting");
-      const changedConnections = () => {
-        setConnected([...connectedRef.current]);
-        broadcast();
-      };
-      l.onJoin((userId) => {
-        connectedRef.current.add(userId);
-        sent.current.delete(userId);
-        changedConnections();
-      });
-      l.onLeave((userId) => {
-        connectedRef.current.delete(userId);
-        sent.current.delete(userId);
-        changedConnections();
-      });
-      l.onMessage((raw, from) => {
-        const result = handlePlayerMessage(ref.current, from, raw, content, newId);
-        for (const r of result.replies) l.send(r.msg, r.to);
-        if (result.campaign !== ref.current) setCampaign({ ...ref.current, ...result.campaign }, result.changed);
-      });
+      l.onJoin(peerJoined);
+      l.onLeave(peerLeft);
+      l.onMessage(received);
     })();
     return () => {
       cancelled = true;
@@ -206,12 +285,12 @@ export function useHost(initial: StudioCampaign) {
   /** Sends damage, healing or a condition to one player's sheet. Only reaches players who are connected. */
   const sendEffect = useCallback((userId: string, effect: Effect) => {
     if (!connectedRef.current.has(userId)) return false;
-    link.current?.send({ t: "effect", v: PROTOCOL_VERSION, effectId: newId(), effect }, userId);
+    sendTo({ t: "effect", v: PROTOCOL_VERSION, effectId: newId(), effect }, userId);
     return true;
   }, []);
 
   /** Forget a map's cached tiles, after a new image is saved for it. */
   const forgetTiles = useCallback((mapId: string) => originals.current.delete(mapId), []);
 
-  return { campaign, update, status, connected, inviteUrl, sendEffect, forgetTiles };
+  return { campaign, update, status, connected, inviteUrl, sendEffect, forgetTiles, startLanPlayer };
 }
