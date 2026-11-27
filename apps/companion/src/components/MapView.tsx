@@ -3,7 +3,7 @@
  * Used by the DM page, the player's sheet and the table display. Plain DOM and SVG, no canvas, so it stays crisp
  * when zoomed and simple to test.
  */
-import { TILE_SIZE, cellAt as gridCellAt, cellCentre, cellPolygon, columns, distanceFeet, gridKind, gridPath, polygonPath, rows, type MapScene, type Point, type Token } from "@mimicbox/table";
+import { TILE_SIZE, cellAt as gridCellAt, cellCentre, cellPolygon, columns, distanceFeet, gridKind, gridPath, polygonPath, rows, tokenSpotAt, type MapScene, type Point, type Token } from "@mimicbox/table";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 
 export type MapTool = "view" | "reveal" | "hide" | "move" | "measure" | "wall" | "erase" | "door";
@@ -43,7 +43,8 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
   const cols = columns(map);
   const rws = rows(map);
   const { size, offsetX, offsetY } = map.grid;
-  const hex = gridKind(map) !== "square";
+  const kind = gridKind(map);
+  const hex = kind === "hex-rows" || kind === "hex-columns";
   // Every hex outline in one path; recomputed only when the grid changes.
   const hexGrid = useMemo(() => (hex ? gridPath(map) : ""), [hex, map.width, map.height, map.grid.size, map.grid.offsetX, map.grid.offsetY, map.grid.kind]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -67,6 +68,11 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
     const r = surface.current!.getBoundingClientRect();
     return gridCellAt(map, (e.clientX - r.left) / scale, (e.clientY - r.top) / scale);
   };
+  /** Where a dragged token or the ruler's end lands: a cell, or any point on a map with no grid. */
+  const spotAt = (e: PointerEvent): { x: number; y: number } => {
+    const r = surface.current!.getBoundingClientRect();
+    return tokenSpotAt(map, (e.clientX - r.left) / scale, (e.clientY - r.top) / scale);
+  };
   const center = (x: number, y: number) => {
     const c = cellCentre(map, x, y);
     return { cx: c.x, cy: c.y };
@@ -87,7 +93,7 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
   function down(e: PointerEvent) {
     if (tool === "measure") {
       e.currentTarget.setPointerCapture(e.pointerId);
-      const c = cellAt(e);
+      const c = spotAt(e);
       setRuler({ from: c, to: c });
       setMeasuring(true);
       return;
@@ -109,12 +115,12 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
   }
   function moveOver(e: PointerEvent) {
     if (measuring && ruler) {
-      const c = cellAt(e);
+      const c = spotAt(e);
       if (c.x !== ruler.to.x || c.y !== ruler.to.y) setRuler({ ...ruler, to: c });
     } else if (paint) {
       const c = cellAt(e);
       if (!paint.has(c.y * cols + c.x)) setPaint(new Map(paint).set(c.y * cols + c.x, c));
-    } else if (drag) setDrag({ ...drag, ...cellAt(e) });
+    } else if (drag) setDrag({ ...drag, ...spotAt(e) });
   }
   function up() {
     setMeasuring(false);
@@ -149,7 +155,7 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
             />
           ))}
           <svg className="map-overlay" viewBox={`0 0 ${map.width} ${map.height}`} preserveAspectRatio="none" aria-hidden="true">
-            {hex ? (
+            {kind === "none" ? null : hex ? (
               <path d={hexGrid} fill="none" stroke="rgba(239,228,210,0.35)" strokeWidth={Math.max(1, size / 60)} />
             ) : (
               <>

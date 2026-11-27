@@ -155,6 +155,11 @@ export function TableProvider({ children }: { children: ReactNode }) {
     setStatus("connecting");
     setProblem(null);
     const hello = () => link.current?.send({ t: "hello", v: PROTOCOL_VERSION, invite: invite.key, playerName: seat.playerName }, invite.host);
+    // Say hello again until the DM answers: a message sent the instant a link opens can be lost (seen with Chrome's
+    // local-network links), and the DM's app treats a repeated hello as the same player.
+    const retry = window.setInterval(() => {
+      if (!cancelled && !welcomed.current && link.current?.connected().includes(invite.host)) hello();
+    }, 2000);
     void (async () => {
       let l: TableLink;
       if (seat.lan) {
@@ -244,6 +249,7 @@ export function TableProvider({ children }: { children: ReactNode }) {
     })();
     return () => {
       cancelled = true;
+      window.clearInterval(retry);
       welcomed.current = false;
       const l = link.current;
       link.current = null;

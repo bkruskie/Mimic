@@ -186,14 +186,16 @@ export function useHost(initial: StudioCampaign) {
         if (!answer.player.startsWith("lan-")) throw new LanCodeError("That reply code is incomplete. Ask the player to join again.");
         accepted = true;
         const id = answer.player;
-        peer.onMessage((m) => {
-          if (lanPeers.current.get(id) === peer) received(m, id);
-        });
+        // Open first: if the link opened and the player's hello arrived while the reply was being read, onMessage
+        // replays it at once, and it must find this connection already known.
         peer.onOpen(() => {
           const old = lanPeers.current.get(id);
           lanPeers.current.set(id, peer);
           old?.close(); // The same device joining again replaces its older connection.
           peerJoined(id);
+        });
+        peer.onMessage((m) => {
+          if (lanPeers.current.get(id) === peer) received(m, id);
         });
         peer.onClose(() => {
           if (lanPeers.current.get(id) !== peer) return;

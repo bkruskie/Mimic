@@ -109,8 +109,10 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
   const [tiles, setTiles] = useState<{ tx: number; ty: number; url: string }[]>([]);
   const [tool, setTool] = useState<MapTool>("move");
   const [grid, setGridDraft] = useState({ size: String(map.grid.size), offsetX: String(map.grid.offsetX), offsetY: String(map.grid.offsetY), kind: gridKind(map) });
-  const cellWord = gridKind(map) === "square" ? "squares" : "hexes";
-  const cellOne = gridKind(map) === "square" ? "square" : "hex";
+  const kind = gridKind(map);
+  // With no grid, fog, walls and doors still use invisible squares; the tools call them areas.
+  const cellWord = kind === "square" ? "squares" : kind === "none" ? "areas" : "hexes";
+  const cellOne = kind === "square" ? "square" : kind === "none" ? "area" : "hex";
   const [creature, setCreature] = useState("");
   const [hiddenCreature, setHiddenCreature] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -171,13 +173,13 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
       <p className="muted small" style={{ margin: 0 }}>
         {
           {
-            move: `Drag any token to a ${cellOne}.`,
+            move: kind === "none" ? "Drag any token anywhere." : `Drag any token to a ${cellOne}.`,
             reveal: `Drag across ${cellWord} to show them to players.`,
             hide: `Drag across ${cellWord} to hide them again.`,
             wall: `Drag across ${cellWord} that block sight. Players never see walls; they only affect exploring.`,
             door: `Tap a ${cellOne} to add a closed door, tap again to open it, and again to close it.`,
             erase: "Drag across walls and doors to remove them.",
-            measure: gridKind(map) === "square" ? "Drag from one square to another to measure. Diagonal steps count 5 feet." : "Drag from one hex to another to measure. Each hex counts 5 feet.",
+            measure: kind === "square" ? "Drag from one square to another to measure. Diagonal steps count 5 feet." : kind === "none" ? "Drag between any two points to measure in a straight line." : "Drag from one hex to another to measure. Each hex counts 5 feet.",
             view: "",
           }[tool]
         }
@@ -241,10 +243,11 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
               <option value="square">Squares</option>
               <option value="hex-rows">Hexes in rows (pointed tops)</option>
               <option value="hex-columns">Hexes in columns (flat tops)</option>
+              <option value="none">No grid</option>
             </select>
           </label>
           <label className="field" style={{ width: 110 }}>
-            <span>{grid.kind === "square" ? "Square size (px)" : grid.kind === "hex-rows" ? "Hex width (px)" : "Hex height (px)"}</span>
+            <span>{grid.kind === "square" ? "Square size (px)" : grid.kind === "hex-rows" ? "Hex width (px)" : grid.kind === "hex-columns" ? "Hex height (px)" : "Pixels per 5 feet"}</span>
             <input className="input" inputMode="numeric" value={grid.size} onChange={(e) => setGridDraft({ ...grid, size: e.target.value })} />
           </label>
           <label className="field" style={{ width: 90 }}>
@@ -258,7 +261,10 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
           <button className="btn">Apply grid</button>
         </form>
         <p className="muted small">
-          Match the grid drawn on your map. For hexes, the size is the distance between the centres of two neighbouring hexes in a {grid.kind === "hex-columns" ? "column" : "row"}. Changing the grid hides every cell again and clears walls and doors.
+          {grid.kind === "none"
+            ? "Tokens move freely and distances are straight lines. Pixels per 5 feet sets the scale, and the size of the areas you reveal and wall off."
+            : `Match the grid drawn on your map.${grid.kind === "square" ? "" : ` For hexes, the size is the distance between the centres of two neighbouring hexes in a ${grid.kind === "hex-columns" ? "column" : "row"}.`}`}{" "}
+          Changing the grid hides everything again and clears walls and doors.
         </p>
       </details>
       <h3>Tokens</h3>

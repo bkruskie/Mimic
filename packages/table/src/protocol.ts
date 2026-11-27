@@ -130,7 +130,8 @@ export function parsePlayerMessage(raw: unknown): PlayerMessage | null {
       };
     }
     case "move":
-      return id(raw.commandId) && id(raw.tokenId) && Number.isInteger(raw.x) && Number.isInteger(raw.y)
+      // Fractional on maps with no grid; the host checks against the map.
+      return id(raw.commandId) && id(raw.tokenId) && typeof raw.x === "number" && Number.isFinite(raw.x) && typeof raw.y === "number" && Number.isFinite(raw.y)
         ? { t: "move", v: raw.v, commandId: raw.commandId, tokenId: raw.tokenId, x: raw.x as number, y: raw.y as number }
         : null;
     case "door":

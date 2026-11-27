@@ -1,6 +1,6 @@
 # Working on Mimic Box VTT
 
-Read `docs/architecture.md` before changing architecture, data models or the roadmap. Decisions are recorded in `docs/adr/`.
+Read `docs/architecture.md` before changing architecture, data models or the roadmap. Decisions are recorded in `docs/adr/`. Every screen follows `docs/design.md`: no dead space, the map always within reach, and layouts for phone and tablet in both orientations as well as desktop.
 
 ## Product truths
 

@@ -4,7 +4,7 @@
  * only if one of its squares is revealed, and every unrevealed square inside it is painted over before it leaves
  * the DM's device. These functions decide what is allowed; the app does the pixel work.
  */
-import { cellAt, cellBounds, cellCentre, cellDistance, cellPolygon, columns, GRID_KINDS, rows, type Grid, type GridKind, type Point, type Rect } from "./grid.js";
+import { cellAt, cellBounds, cellCentre, cellDistance, cellPolygon, columns, GRID_KINDS, isGridless, rows, tokenCell, type Grid, type GridKind, type Point, type Rect } from "./grid.js";
 import type { HostCampaign } from "./host.js";
 
 export { cellRect, columns, rows } from "./grid.js";
@@ -107,7 +107,7 @@ export function publicMap(m: MapScene, viewer: string | null, activeTokenId: str
     }
   }
   // Tokens on revealed squares, never hidden ones; a player always sees their own token.
-  const tokens = m.tokens.filter((t) => (viewer !== null && t.memberId === viewer) || (!t.hidden && isRevealed(m, t.x, t.y)));
+  const tokens = m.tokens.filter((t) => (viewer !== null && t.memberId === viewer) || (!t.hidden && isRevealed(m, Math.round(t.x), Math.round(t.y))));
   const cols = columns(m);
   const doors = (m.doors ?? [])
     .map((d) => ({ x: d.index % cols, y: Math.floor(d.index / cols), open: d.open }))
@@ -148,7 +148,7 @@ export function setGrid(c: HostCampaign, id: string, grid: Grid): HostCampaign {
   const size = Math.max(16, Math.min(400, Math.round(grid.size)));
   const kind: GridKind = GRID_KINDS.includes(grid.kind as GridKind) ? (grid.kind as GridKind) : "square";
   // A hex grid's pattern repeats every two cells across its shifted direction.
-  const period = kind === "square" ? size : size * 2;
+  const period = kind === "hex-rows" || kind === "hex-columns" ? size * 2 : size;
   const offset = (n: number) => Math.max(0, Math.round(n)) % period;
   // Changing the grid changes what every cell covers, so the fog, walls and doors start over; tokens are kept
   // on cells that still exist.
@@ -191,7 +191,9 @@ export function movePlayerToken(c: HostCampaign, memberId: string, tokenId: stri
   const m = (c.maps ?? []).find((s) => s.id === c.activeMapId);
   const token = m?.tokens.find((t) => t.id === tokenId);
   if (!m || !token || token.memberId !== memberId) return null;
-  if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= columns(m) || y >= rows(m)) return null;
+  // Whole cells, except on a map with no grid, where a token stands anywhere (to 1/100 of a cell).
+  const ok = (n: number) => (isGridless(m) ? Number.isFinite(n) && Math.round(n * 100) === n * 100 : Number.isInteger(n));
+  if (!ok(x) || !ok(y) || x < 0 || y < 0 || x > columns(m) - 1 || y > rows(m) - 1) return null;
   return explore(saveToken(c, m.id, { ...token, x, y }), m.id);
 }
 
@@ -208,7 +210,7 @@ export const FEET_PER_SQUARE = 5;
 /** Distance in feet between two cells. Without a map, the cells are squares. */
 export function distanceFeet(a: Point, b: Point, m?: Pick<MapScene, "width" | "height" | "grid">): number {
   const steps = m ? cellDistance(m, a, b) : Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
-  return steps * FEET_PER_SQUARE;
+  return Math.round(steps * FEET_PER_SQUARE);
 }
 
 const blocks = (m: MapScene, i: number) => (m.walls ?? []).includes(i) || (m.doors ?? []).some((d) => d.index === i && !d.open);
@@ -247,7 +249,7 @@ export function partyVision(m: MapScene): number[] {
   const cols = columns(m);
   const radius = m.explore?.radius ?? 0;
   const out = new Set<number>();
-  for (const t of m.tokens.filter((x) => x.memberId)) {
+  for (const t of m.tokens.filter((x) => x.memberId).map(tokenCell)) {
     for (let y = 0; y < rows(m); y++) {
       for (let x = 0; x < cols; x++) {
         if (radius && cellDistance(m, t, { x, y }) > radius) continue;
@@ -310,6 +312,7 @@ export function togglePlayerDoor(c: HostCampaign, memberId: string, x: number, y
   const i = y * columns(m) + x;
   const door = (m.doors ?? []).find((d) => d.index === i);
   const own = m.tokens.find((t) => t.memberId === memberId);
-  if (!door || !own || !isRevealed(m, x, y) || cellDistance(m, own, { x, y }) > 1) return null;
+  // Next to the token: one step, or with no grid within a cell and a half (a diagonal neighbour).
+  if (!door || !own || !isRevealed(m, x, y) || cellDistance(m, own, { x, y }) > (isGridless(m) ? 1.5 : 1)) return null;
   return explore(withMap(c, m.id, (s) => ({ ...s, doors: (s.doors ?? []).map((d) => (d.index === i ? { ...d, open: !d.open } : d)) })), m.id);
 }
