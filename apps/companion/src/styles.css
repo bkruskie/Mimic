@@ -1628,3 +1628,124 @@ details.feature[open] {
 .table-bar .table-tools .chip {
   min-height: 36px;
 }
+
+/* ---------- the DM's studio: Prepare and Play ---------- */
+.studio {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+.studio-bar {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: var(--lid);
+  border-bottom: 1px solid var(--seam);
+  flex-wrap: wrap;
+}
+.studio-name {
+  margin: 0;
+  font-size: var(--t-xl);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 34vw;
+}
+.mode-switch {
+  display: flex;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--hollow);
+}
+.mode-switch button {
+  border: 0;
+  background: transparent;
+  color: var(--bone-dim);
+  font: inherit;
+  padding: 6px 16px;
+  min-height: 38px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.mode-switch button[aria-pressed="true"] {
+  background: var(--brass);
+  color: var(--hollow);
+  font-weight: 700;
+}
+.studio-players {
+  white-space: nowrap;
+}
+.studio-notice {
+  margin: 8px 12px 0;
+}
+.studio-prepare {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 10px 14px 96px;
+  box-sizing: border-box;
+}
+.prep-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 0 4px;
+}
+.prep-tabs .chip[aria-current="page"] {
+  background: var(--brass);
+  color: var(--hollow);
+  border-color: var(--brass);
+}
+.studio-play {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.studio-play.wide {
+  flex-direction: row;
+  height: calc(100dvh - 58px);
+}
+.play-map {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 8px 12px 24px;
+}
+.play-below {
+  padding: 0 12px 96px;
+}
+.studio-play .table-panel .section:first-child,
+.studio-play .table-panel .section.panel:first-child {
+  margin-top: 0;
+}
+.play-empty {
+  max-width: 44ch;
+  margin: 12vh auto;
+  text-align: center;
+  display: grid;
+  gap: 10px;
+}
+
+/* The DM's turn order fits a narrow side panel: initiative, name and hit points on one line, creature actions below. */
+.dm-initiative li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 10px;
+}
+.dm-initiative .combat-actions {
+  grid-column: 2 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: -4px;
+}
+.chip-quiet {
+  background: transparent;
+  border-style: dashed;
+}

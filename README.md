@@ -27,6 +27,8 @@ A free, local-first tabletop roleplaying platform. Players keep their characters
 
 Not yet: multiclassing, homebrew forms, Pathfinder 2e, Neon Odyssey, and anything that needs a DM or a network.
 
+The DM's studio has two modes. Prepare holds the world, maps, handouts, players and backups, one tab at a time. Play puts the map in play in the middle with the turn order, handouts to show, the party and the dice beside it.
+
 ## Run it
 
 Requires Node 22+ and pnpm 10.

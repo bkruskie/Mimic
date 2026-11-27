@@ -80,6 +80,17 @@ async function bringCharacter(page, fixture) {
   await page.getByText(/^Imported /).waitFor();
 }
 
+/** The DM's studio: Play mode, or a Prepare tab (world, maps, handouts, players, campaign). */
+async function dmTo(page, place) {
+  const mode = place === "play" ? "Play" : "Prepare";
+  const switcher = page.getByRole("group", { name: "Mode" }).getByRole("button", { name: mode });
+  if ((await switcher.getAttribute("aria-pressed")) !== "true") await switcher.click();
+  if (place === "play") return;
+  const names = { world: "World", maps: "Maps", handouts: "Handouts", players: "Players", campaign: "Campaign" };
+  const tab = page.getByRole("navigation", { name: "Prepare" }).getByRole("button", { name: names[place], exact: true });
+  if ((await tab.getAttribute("aria-pressed")) !== "true") await tab.click();
+}
+
 /** The player's table view (the map), opened from the sheet's Map chip. */
 async function openTable(page) {
   if ((await page.locator(".table-view").count()) === 0) await page.getByRole("button", { name: "Map", exact: true }).click();
@@ -136,6 +147,7 @@ try {
   await alice.page.locator(".roll-result .total").waitFor();
   const aliceRoll = await alice.page.locator(".roll-result .total").innerText();
   await alice.page.keyboard.press("Escape");
+  await dmTo(dm.page, "play");
   await eventually(async () => (await dm.page.getByRole("list", { name: "Rolls" }).innerText()).includes("Wren Ashdown (Alice): Athletics"), `Alice's Athletics roll (${aliceRoll}) appears in the DM's log`);
 
   // ----- Secret and public DM rolls -----
@@ -162,6 +174,7 @@ try {
   await shot(display, "display");
 
   // ----- Handouts: written in private, shown when the DM chooses -----
+  await dmTo(dm.page, "handouts");
   const writeHandout = async (title, body, picture) => {
     await dm.page.getByRole("button", { name: "Write a handout" }).click();
     await dm.page.getByLabel("Title").fill(title);
@@ -199,6 +212,7 @@ try {
   await eventually(async () => !/ferryman/.test(await display.locator("main").innerText()), "hiding it again takes it off the display");
 
   // ----- Combat: initiative from the sheet, hidden creatures, turns -----
+  await dmTo(dm.page, "play");
   await dm.page.getByRole("button", { name: "Start combat" }).click();
   await alice.page.getByRole("button", { name: "Roll initiative" }).waitFor({ timeout: 20000 });
   check(true, "Alice is asked to roll initiative");
@@ -235,6 +249,7 @@ try {
   await eventually(async () => (await alice.page.locator(".combat-banner").count()) === 0, "ending combat clears it from Alice's sheet");
 
   // ----- Maps: fog of war, tokens, the display -----
+  await dmTo(dm.page, "maps");
   const mapChooser = dm.page.waitForEvent("filechooser");
   await dm.page.getByRole("button", { name: "Add a map" }).click();
   await (await mapChooser).setFiles(join(FIXTURES, "docks.png"));
@@ -394,6 +409,7 @@ try {
 
   // Turns light up the acting token.
   await openSheet(alice.page);
+  await dmTo(dm.page, "play");
   await dm.page.getByRole("button", { name: "Reveal all" }).click();
   await dm.page.getByRole("button", { name: "Start combat" }).click();
   await dm.page.getByLabel("Creature", { exact: true }).fill("Ogre");
@@ -427,6 +443,7 @@ try {
   await eventually(async () => !/Prone/.test(await alice.page.locator(".sheet-top").innerText()), "and clearing it removes it");
 
   // ----- World notes: entries and paragraphs revealed separately -----
+  await dmTo(dm.page, "world");
   const world = dm.page.getByRole("region", { name: "World" });
   const entry = dm.page.getByRole("form", { name: "World entry" });
   await world.getByRole("button", { name: "New place" }).click();
@@ -466,6 +483,7 @@ try {
   await alice.page.keyboard.press("Escape");
 
   // ----- Replacing the link keeps out anyone holding the old one -----
+  await dmTo(dm.page, "players");
   await dm.page.getByRole("button", { name: "Replace link" }).click();
   await eventually(async () => (await dm.page.getByRole("textbox", { name: "Invite link" }).inputValue()) !== invite, "the DM replaces the invite link");
   const newInvite = await dm.page.getByRole("textbox", { name: "Invite link" }).inputValue();
@@ -488,6 +506,7 @@ try {
   await eventually(async () => /At The Sunken Bell/.test(await alice.page.locator(".sheet-top").innerText()), "Alice rejoins with the new link");
 
   // ----- A reconnect doesn't repeat anything -----
+  await dmTo(dm.page, "play");
   const rollsBefore = await dm.page.getByRole("list", { name: "Rolls" }).locator("li").count();
   await alice.page.reload();
   await alice.page.getByRole("heading", { name: "Wren Ashdown" }).waitFor();
@@ -496,8 +515,19 @@ try {
   check((await dm.page.getByRole("list", { name: "Rolls" }).locator("li").count()) === rollsBefore, "reconnecting adds no rolls");
   check((await dm.page.locator(".member").count()) === 2, "and no extra party members");
   await shot(dm.page, "dm-party");
+  // Play mode fits the DM's screen too: on a phone the map comes first and the play panel follows below it.
+  const dmSize = dm.page.viewportSize();
+  await dm.page.setViewportSize({ width: 390, height: 844 });
+  const dmPanel = dm.page.getByRole("complementary", { name: "Play panel" });
+  await dmPanel.waitFor();
+  const dmMapBox = await dm.page.locator(".play-map").boundingBox();
+  const dmPanelBox = await dmPanel.boundingBox();
+  check(dmPanelBox.y >= dmMapBox.y + dmMapBox.height - 1 && dmMapBox.width > 370, "on a phone, Play puts the map first, full width, and the panel below it");
+  await shot(dm.page, "dm-play-phone");
+  await dm.page.setViewportSize(dmSize);
 
   // ----- Backups: the DM moves the campaign to another computer; a player restores their vault -----
+  await dmTo(dm.page, "campaign");
   const [campaignFile] = await Promise.all([dm.page.waitForEvent("download"), dm.page.getByRole("button", { name: "Download a backup" }).click()]);
   check(/\.mimicbox-campaign$/.test(campaignFile.suggestedFilename()), `the DM downloads ${campaignFile.suggestedFilename()}`);
   const backupPath = join(SHOTS, "backup.mimicbox-campaign");
@@ -509,13 +539,17 @@ try {
   await laptop.page.getByRole("button", { name: "Import a campaign" }).click();
   await (await campaignChooser).setFiles(backupPath);
   await laptop.page.getByRole("heading", { name: "The Sunken Bell" }).waitFor();
-  const moved = await text(laptop.page);
-  check(/Wren Ashdown/.test(moved) && /Bram Hollis/.test(moved) && /Imported\. Send your players the invite link/.test(moved), "the other computer opens the campaign with its party");
+  await dmTo(laptop.page, "players");
+  const moved = await laptop.page.locator("body").innerText();
+  check(/Wren Ashdown/.test(moved) && /Bram Hollis/.test(moved) && /Imported\. Send your players the new invite link/.test(moved), "the other computer opens the campaign with its party");
+  await dmTo(laptop.page, "handouts");
   const laptopLetter = laptop.page.getByRole("article", { name: "The ferryman's letter" });
   await laptopLetter.getByText("Read").click();
   await eventually(async () => laptopLetter.locator("img.handout-image").evaluateAll((imgs) => imgs.length === 1 && imgs[0].naturalWidth > 0), "with the handout's picture");
+  await dmTo(laptop.page, "world");
   const laptopWorld = await laptop.page.getByRole("region", { name: "World" }).innerText();
   check(/Port Ashen/.test(laptopWorld) && /Mara the ferrywoman/.test(laptopWorld) && /The Drowned Vault/.test(laptopWorld), "with its world notes, secrets included");
+  await dmTo(laptop.page, "maps");
   await laptop.page.getByRole("button", { name: /^docks/ }).click();
   await eventually(async () => (await laptop.page.getByRole("img", { name: "docks, as you see it" }).locator(".map-surface > img").count()) === 6, "the map and all six of its tiles come along");
   await laptop.context.close();
@@ -550,6 +584,7 @@ try {
   await cabin.page.getByRole("heading", { name: "Snowbound" }).waitFor();
   const cabinText = await cabin.page.locator("body").innerText();
   check(/You're offline\. Keep preparing/.test(cabinText), `offline, the studio says so and keeps working${/You're offline/.test(cabinText) ? "" : `: ${cabinText.slice(0, 200)}`}`);
+  await dmTo(cabin.page, "world");
   const cabinWorld = cabin.page.getByRole("region", { name: "World" });
   const cabinEntry = cabin.page.getByRole("form", { name: "World entry" });
   await cabinWorld.getByRole("button", { name: "New place" }).click();
@@ -564,7 +599,9 @@ try {
   check(true, "the world prepared offline is still there after a reload");
 
   await cabin.context.setOffline(false);
+  await dmTo(cabin.page, "players");
   await eventually(async () => (await cabin.page.getByRole("textbox", { name: "Invite link" }).count()) > 0, "back online, hosting starts and the invite link appears");
+  await dmTo(cabin.page, "world");
 
   // ----- A player joins on the DM's network: codes swapped, no relay or other server -----
   // Chrome's offline emulation also blocks WebRTC, so it can't stand in for Wi-Fi without internet. Instead Dana's
@@ -580,6 +617,7 @@ try {
   const contacted = [];
   dana.page.on("websocket", (ws) => contacted.push(ws.url()));
   dana.page.on("request", (r) => !r.url().startsWith(base) && !r.url().startsWith("data:") && contacted.push(r.url()));
+  await dmTo(cabin.page, "players");
   await cabin.page.getByRole("button", { name: "Add a player without internet" }).click();
   const dmCode = await cabin.page.getByRole("textbox", { name: "Code for the player" }).inputValue();
   check(/^MB-LAN1\./.test(dmCode), `the DM's screen shows a code for the player (${dmCode.length} characters)`);
@@ -619,6 +657,7 @@ try {
   await dana.page.getByRole("button", { name: "Journal" }).click();
   check(/Hollow Keep/.test(await dana.page.getByRole("dialog").innerText()), "and her journal gets the revealed place");
   await dana.page.keyboard.press("Escape");
+  await dmTo(cabin.page, "handouts");
   await cabin.page.getByRole("button", { name: "Write a handout" }).click();
   await cabin.page.getByLabel("Title").fill("Map of the keep");
   await cabin.page.getByLabel("Handout picture").setInputFiles(join(FIXTURES, "docks.png"));
@@ -635,6 +674,7 @@ try {
   check(contacted.length === 0, `Dana's phone contacted no relay or server${contacted.length ? `: ${contacted.join(", ")}` : ""}`);
 
   // ----- A hex grid: fog painted around one revealed hex -----
+  await dmTo(cabin.page, "maps");
   const hexChooser = cabin.page.waitForEvent("filechooser");
   await cabin.page.getByRole("button", { name: "Add a map" }).click();
   await (await hexChooser).setFiles(join(FIXTURES, "docks.png"));

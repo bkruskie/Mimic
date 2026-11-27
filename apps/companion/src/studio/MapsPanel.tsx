@@ -109,7 +109,23 @@ export function MapsPanel({ campaign, update, onTilesChanged }: { campaign: Stud
   );
 }
 
-function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampaign; map: MapScene; update: (fn: (c: StudioCampaign) => StudioCampaign) => void; onDeleted: () => void }) {
+/**
+ * One map's tools and view. In Play mode (`play`) it keeps what a session needs (tools, pins, exploring, tokens)
+ * and leaves grid setup and deleting the map to Prepare.
+ */
+export function MapEditor({
+  campaign,
+  map,
+  update,
+  onDeleted,
+  play = false,
+}: {
+  campaign: StudioCampaign;
+  map: MapScene;
+  update: (fn: (c: StudioCampaign) => StudioCampaign) => void;
+  onDeleted: () => void;
+  play?: boolean;
+}) {
   const [tiles, setTiles] = useState<{ tx: number; ty: number; url: string }[]>([]);
   const [tool, setTool] = useState<MapTool>("move");
   const [grid, setGridDraft] = useState({ size: String(map.grid.size), offsetX: String(map.grid.offsetX), offsetY: String(map.grid.offsetY), kind: gridKind(map) });
@@ -173,10 +189,10 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
             {name}
           </button>
         ))}
-        <button className="btn btn-quiet" onClick={() => update((c) => ({ ...c, ...revealAll(c, map.id, true) }))}>
+        <button className="chip chip-quiet" onClick={() => update((c) => ({ ...c, ...revealAll(c, map.id, true) }))}>
           Reveal all
         </button>
-        <button className="btn btn-quiet" onClick={() => update((c) => ({ ...c, ...revealAll(c, map.id, false) }))}>
+        <button className="chip chip-quiet" onClick={() => update((c) => ({ ...c, ...revealAll(c, map.id, false) }))}>
           Hide all
         </button>
       </div>
@@ -279,6 +295,7 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
       <p className="muted small" style={{ margin: 0 }}>
         When on, {cellWord} the party's tokens can see are revealed as they move. Walls and closed doors block sight; a sight of 0 means no limit. Revealed {cellWord} stay revealed.
       </p>
+      {!play && (
       <details>
         <summary style={{ cursor: "pointer" }}>Grid</summary>
         <form
@@ -319,6 +336,7 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
           Changing the grid hides everything again and clears walls and doors.
         </p>
       </details>
+      )}
       <h3>Tokens</h3>
       <ul className="rows" aria-label="Tokens">
         {map.tokens.map((t) => (
@@ -372,6 +390,7 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
           Add token
         </button>
       </form>
+      {!play && (
       <div>
         {confirmDelete ? (
           <span className="row">
@@ -395,6 +414,7 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
           </button>
         )}
       </div>
+      )}
     </div>
   );
 }
