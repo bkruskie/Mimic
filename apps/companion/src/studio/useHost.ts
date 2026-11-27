@@ -21,12 +21,29 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { coverTile } from "../lib/mapImages";
 import { loadTiles, saveCampaign, type StudioCampaign } from "./store";
 
-export type HostStatus = "starting" | "hosting" | "error";
+export type HostStatus = "starting" | "hosting" | "offline" | "error";
+
+/** Whether the browser thinks it has a network connection, kept up to date. */
+function useOnline(): boolean {
+  const [online, setOnline] = useState(() => navigator.onLine);
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, []);
+  return online;
+}
 
 export function useHost(initial: StudioCampaign) {
   const [campaign, setCampaignState] = useState(initial);
   const ref = useRef(initial);
   const [status, setStatus] = useState<HostStatus>("starting");
+  const online = useOnline();
   const [hostId, setHostId] = useState<string | null>(null);
   const [connected, setConnected] = useState<string[]>([]);
   const connectedRef = useRef(new Set<string>());
@@ -94,9 +111,14 @@ export function useHost(initial: StudioCampaign) {
 
   useEffect(() => {
     let cancelled = false;
-    setStatus("starting");
     connectedRef.current = new Set();
     setConnected([]);
+    // With no connection the DM can still prepare: everything saves on this device. Hosting starts when it's back.
+    if (!online) {
+      setStatus("offline");
+      return;
+    }
+    setStatus("starting");
     void (async () => {
       let l: TableLink;
       try {
@@ -135,8 +157,8 @@ export function useHost(initial: StudioCampaign) {
       link.current = null;
       void l?.leave();
     };
-    // A new room or key (a replaced invite link) means a new link.
-  }, [campaign.room, campaign.key]); // eslint-disable-line react-hooks/exhaustive-deps
+    // A new room or key (a replaced invite link) means a new link; coming back online starts hosting again.
+  }, [campaign.room, campaign.key, online]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The table display: read-only, on this device. It asks for the current view when it opens.
   useEffect(() => {
@@ -157,7 +179,7 @@ export function useHost(initial: StudioCampaign) {
 
   useEffect(() => () => void saveCampaign(ref.current), []);
 
-  const inviteUrl = hostId
+  const inviteUrl = hostId && status !== "offline"
     ? `${new URL("./", location.href).href}#/join/${encodeInvite({ room: campaign.room, key: campaign.key, host: hostId, campaign: campaign.name, relays: campaign.relays })}`
     : null;
 
