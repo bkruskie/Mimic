@@ -7,8 +7,12 @@ import type { Character } from "@mimicbox/ruleset-dnd5e";
 import {
   PROTOCOL_VERSION,
   applyEffect,
+  LAN_HOST,
   decodeInvite,
   describeEffect,
+  encodeInvite,
+  joinLan,
+  lanLink,
   openLink,
   parseHostMessage,
   type Invite,
@@ -32,6 +36,8 @@ export interface Seat {
   code: string;
   characterId: string;
   playerName: string;
+  /** Joined on the DM's network without internet (ADR 0006): the link can't reopen by itself. */
+  lan?: boolean;
 }
 
 interface TableState {
@@ -59,6 +65,8 @@ interface TableState {
   /** Opens or closes a door next to this player's token. */
   toggleDoor: (x: number, y: number) => void;
   join: (seat: Seat) => Promise<void>;
+  /** Joins on the DM's network from the DM's code; returns the reply code to show the DM. */
+  joinOnNetwork: (dmCode: string, characterId: string, playerName: string) => Promise<string>;
   leave: () => Promise<void>;
   shareCharacter: (c: Character) => void;
   shareRoll: (roll: Extract<PlayerMessage, { t: "roll" }>["roll"]) => void;
@@ -94,6 +102,8 @@ export function TableProvider({ children }: { children: ReactNode }) {
   const [party, setParty] = useState<PartyMember[]>([]);
   const [rolls, setRolls] = useState<SharedRoll[]>([]);
   const link = useRef<TableLink | null>(null);
+  // A local-network link for a seat; it outlives re-renders, because it can't be reopened without the DM.
+  const lanSeat = useRef<{ code: string; link: TableLink } | null>(null);
   const welcomed = useRef(false);
   // Commands wait here until the DM confirms them, and are sent again after a reconnect. The DM's app
   // recognises a command it has already applied, so nothing happens twice.
@@ -139,7 +149,15 @@ export function TableProvider({ children }: { children: ReactNode }) {
     const hello = () => link.current?.send({ t: "hello", v: PROTOCOL_VERSION, invite: invite.key, playerName: seat.playerName }, invite.host);
     void (async () => {
       let l: TableLink;
-      try {
+      if (seat.lan) {
+        const held = lanSeat.current?.code === seat.code ? lanSeat.current.link : null;
+        if (!held) {
+          setStatus("error");
+          setProblem("You played on the DM's network without internet. To reconnect, ask the DM for a new code and scan it in Join a game.");
+          return;
+        }
+        l = held;
+      } else try {
         l = await openLink({ room: invite.room, key: invite.key, relays: invite.relays });
       } catch {
         if (!cancelled) {
@@ -151,14 +169,14 @@ export function TableProvider({ children }: { children: ReactNode }) {
       if (cancelled) return void l.leave();
       link.current = l;
       setStatus("waiting");
-      l.onJoin((userId) => userId === invite.host && hello());
+      l.onJoin((userId) => !cancelled && userId === invite.host && hello());
       l.onLeave((userId) => {
-        if (userId !== invite.host) return;
+        if (cancelled || userId !== invite.host) return;
         welcomed.current = false;
         setStatus("waiting");
       });
       l.onMessage((raw, from) => {
-        if (from !== invite.host) return; // Only the DM named in the invite speaks for the game.
+        if (cancelled || from !== invite.host) return; // Only the DM named in the invite speaks for the game.
         const m = parseHostMessage(raw);
         if (!m) return;
         if (m.t === "welcome") {
@@ -224,17 +242,20 @@ export function TableProvider({ children }: { children: ReactNode }) {
       welcomed.current = false;
       const l = link.current;
       link.current = null;
-      void l?.leave();
+      if (l && l !== lanSeat.current?.link) void l.leave();
     };
   }, [seat, invite, vault, flushOutbox, toast]);
 
   const join = useCallback(
     async (next: Seat) => {
+      if (lanSeat.current && lanSeat.current.code !== next.code) {
+        void lanSeat.current.link.leave();
+        lanSeat.current = null;
+      }
       outbox.current = [];
       setParty([]);
       setRolls([]);
       setHandouts([]);
-    setHandoutImages({});
       setHandoutImages({});
       setCombat(null);
       setMap(null);
@@ -246,7 +267,29 @@ export function TableProvider({ children }: { children: ReactNode }) {
     [vault],
   );
 
+  const joinOnNetwork = useCallback(
+    async (dmCode: string, characterId: string, playerName: string) => {
+      if (!vault) throw new Error("This device's storage isn't ready yet. Try again in a moment.");
+      let lanId = await vault.getSetting<string>("lanId");
+      if (!lanId) {
+        lanId = `lan-${newId()}`;
+        await vault.setSetting("lanId", lanId);
+      }
+      const { offer, reply, peer } = await joinLan(dmCode, lanId);
+      const code = encodeInvite({ room: "lan", key: offer.key, host: LAN_HOST, campaign: offer.campaign });
+      // Close an older local link only after the new one exists, then sit down with the new one.
+      const old = lanSeat.current;
+      lanSeat.current = { code, link: lanLink(peer, lanId) };
+      if (old && old.link !== lanSeat.current.link) void old.link.leave();
+      await join({ code, characterId, playerName, lan: true });
+      return reply;
+    },
+    [vault, join],
+  );
+
   const leave = useCallback(async () => {
+    void lanSeat.current?.link.leave();
+    lanSeat.current = null;
     outbox.current = [];
     await vault?.setSetting(SEAT_SETTING, null);
     setSeat(null);
@@ -299,8 +342,8 @@ export function TableProvider({ children }: { children: ReactNode }) {
   const toggleDoor = useCallback((x: number, y: number) => enqueue({ t: "door", v: PROTOCOL_VERSION, commandId: newId(), x, y }), [enqueue]);
 
   const value = useMemo<TableState>(
-    () => ({ seat, invite, status, problem, party, rolls, handouts, handoutImages, combat, memberId, world, map, mapTiles, moveToken, toggleDoor, join, leave, shareCharacter, shareRoll, setEffectHandler }),
-    [seat, invite, status, problem, party, rolls, handouts, handoutImages, combat, memberId, world, map, mapTiles, moveToken, toggleDoor, join, leave, shareCharacter, shareRoll, setEffectHandler],
+    () => ({ seat, invite, status, problem, party, rolls, handouts, handoutImages, combat, memberId, world, map, mapTiles, moveToken, toggleDoor, join, joinOnNetwork, leave, shareCharacter, shareRoll, setEffectHandler }),
+    [seat, invite, status, problem, party, rolls, handouts, handoutImages, combat, memberId, world, map, mapTiles, moveToken, toggleDoor, join, joinOnNetwork, leave, shareCharacter, shareRoll, setEffectHandler],
   );
   return <TableContext.Provider value={value}>{children}</TableContext.Provider>;
 }

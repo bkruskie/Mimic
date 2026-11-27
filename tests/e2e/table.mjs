@@ -12,6 +12,7 @@ import { createServer } from "node:http";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
 import { chromium } from "playwright-core";
 
 const DIST = resolve("apps/companion/dist");
@@ -38,6 +39,8 @@ const relay = createWsRelayServer({ host: "127.0.0.1", port: 0 });
 await relay.ready;
 const relayUrl = `ws://127.0.0.1:${relay.address().port}`;
 
+// The QR decoder the app uses, from the app's own dependencies.
+const jsQR = createRequire(resolve("apps/companion/package.json"))("jsqr");
 const browser = await chromium.launch({
   executablePath: process.env.CHROME_PATH ?? "/usr/bin/google-chrome",
   // Let two browser profiles on one machine reach each other directly.
@@ -496,8 +499,75 @@ try {
   if (await cabin.page.getByRole("heading", { name: "Snowbound" }).count() === 0) await cabin.page.getByRole("button", { name: /Snowbound/ }).click();
   await cabinWorld.getByText("Hollow Keep").waitFor();
   check(true, "the world prepared offline is still there after a reload");
+
   await cabin.context.setOffline(false);
   await eventually(async () => (await cabin.page.getByRole("textbox", { name: "Invite link" }).count()) > 0, "back online, hosting starts and the invite link appears");
+
+  // ----- A player joins on the DM's network: codes swapped, no relay or other server -----
+  // Chrome's offline emulation also blocks WebRTC, so it can't stand in for Wi-Fi without internet. Instead Dana's
+  // phone is watched: after loading the app it must not contact anything, not even the relay.
+  await cabinWorld.getByRole("button", { name: "Edit Hollow Keep" }).click();
+  await cabinEntry.getByRole("checkbox", { name: "Players know about this place" }).check();
+  await cabinEntry.getByRole("button", { name: "Shown to players" }).click().catch(() => undefined);
+  await cabinEntry.getByRole("button", { name: "Save place" }).click();
+  const dana = await device("Dana", { width: 390, height: 844 });
+  await bringCharacter(dana.page, "wren.mimicbox-character");
+  await dana.page.evaluate(() => navigator.serviceWorker.ready);
+  await dana.page.reload();
+  const contacted = [];
+  dana.page.on("websocket", (ws) => contacted.push(ws.url()));
+  dana.page.on("request", (r) => !r.url().startsWith(base) && !r.url().startsWith("data:") && contacted.push(r.url()));
+  await cabin.page.getByRole("button", { name: "Add a player without internet" }).click();
+  const dmCode = await cabin.page.getByRole("textbox", { name: "Code for the player" }).inputValue();
+  check(/^MB-LAN1\./.test(dmCode), `the DM's screen shows a code for the player (${dmCode.length} characters)`);
+  await shot(cabin.page, "dm-lan-code");
+  // The code as drawn on screen must be readable: decode a screenshot of it with the same library phones without
+  // BarcodeDetector use.
+  const qrPng = await cabin.page.getByRole("img", { name: "QR code for the player" }).screenshot();
+  const pixels = await cabin.page.evaluate(async (b64) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${b64}`;
+    await img.decode();
+    const c = Object.assign(document.createElement("canvas"), { width: img.width, height: img.height });
+    const ctx = c.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    return { w: c.width, h: c.height, data: Array.from(ctx.getImageData(0, 0, c.width, c.height).data) };
+  }, qrPng.toString("base64"));
+  const qrRead = jsQR(Uint8ClampedArray.from(pixels.data), pixels.w, pixels.h);
+  check(qrRead?.data === dmCode, "the QR code on screen reads back as the exact code");
+  await dana.page.goto(`${base}#/join`);
+  await dana.page.getByRole("button", { name: "Join on the DM's network" }).click();
+  await dana.page.getByLabel("Code from the DM").fill(dmCode);
+  await dana.page.getByRole("button", { name: "Read the code" }).click();
+  await dana.page.getByRole("heading", { name: "Join Snowbound" }).waitFor();
+  await dana.page.getByLabel("Your name at the table").fill("Dana");
+  await dana.page.getByRole("button", { name: "Join the game" }).click();
+  const danaReply = await dana.page.getByRole("textbox", { name: "Your reply" }).inputValue();
+  check(/^MB-LAN1\./.test(danaReply), `Dana's phone makes a reply (${danaReply.length} characters)`);
+  await shot(dana.page, "dana-lan-reply");
+  await cabin.page.getByLabel("Player's reply").fill(danaReply);
+  await cabin.page.getByRole("button", { name: "Connect" }).click();
+  await eventually(async () => /#\/c\//.test(dana.page.url()) && /At Snowbound/.test(await dana.page.locator(".chip-table").innerText()), "the DM reads the reply and Dana's sheet connects");
+  await eventually(async () => (await cabin.page.getByRole("article", { name: "Wren Ashdown" }).count()) > 0, "Dana's character joins the DM's party");
+  await dana.page.getByRole("button", { name: "Journal" }).click();
+  check(/Hollow Keep/.test(await dana.page.getByRole("dialog").innerText()), "and her journal gets the revealed place");
+  await dana.page.keyboard.press("Escape");
+  await cabin.page.getByRole("button", { name: "Write a handout" }).click();
+  await cabin.page.getByLabel("Title").fill("Map of the keep");
+  await cabin.page.getByLabel("Handout picture").setInputFiles(join(FIXTURES, "docks.png"));
+  await cabin.page.getByRole("button", { name: "Replace picture" }).waitFor();
+  await cabin.page.getByRole("button", { name: "Save handout" }).click();
+  await cabin.page.getByRole("article", { name: "Map of the keep" }).getByRole("button", { name: "Show to the party" }).click();
+  await eventually(async () => (await dana.page.getByText("New handout: Map of the keep").count()) > 0, "a handout reaches Dana over the local link");
+  await dana.page.locator(".chip-table").click();
+  await dana.page.getByRole("dialog").getByText("Map of the keep").click();
+  await eventually(async () => dana.page.getByRole("dialog").locator("img.handout-image").evaluateAll((imgs) => imgs.length === 1 && imgs[0].naturalWidth > 0), "with its picture, sent in frames");
+  await shot(dana.page, "dana-lan-handout");
+  await dana.page.keyboard.press("Escape");
+  await shot(cabin.page, "dm-lan-party");
+  check(contacted.length === 0, `Dana's phone contacted no relay or server${contacted.length ? `: ${contacted.join(", ")}` : ""}`);
+  await dana.context.close();
+
   await cabin.context.close();
 
   check(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(" | ")}` : ""}`);
