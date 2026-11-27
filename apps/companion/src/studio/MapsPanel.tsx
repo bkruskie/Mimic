@@ -29,6 +29,7 @@ import {
   type Token,
 } from "@mimicbox/table";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useWideTable } from "../components/SidePanel";
 import { MapView, type MapTool } from "../components/MapView";
 import { cutMap } from "../lib/mapImages";
 import { deleteTiles, loadTiles, saveTiles, type StudioCampaign } from "./store";
@@ -133,6 +134,17 @@ export function MapEditor({
   // With no grid, fog, walls and doors still use invisible squares; the tools call them areas.
   const cellWord = kind === "square" ? "squares" : kind === "none" ? "areas" : "hexes";
   const cellOne = kind === "square" ? "square" : kind === "none" ? "area" : "hex";
+  const narrow = !useWideTable();
+  const tools: [MapTool, string][] = [
+    ["move", "Move tokens"],
+    ["reveal", `Reveal ${cellWord}`],
+    ["hide", `Hide ${cellWord}`],
+    ["wall", "Draw walls"],
+    ["door", "Doors"],
+    ["erase", "Erase walls"],
+    ["pin", "Pins"],
+    ["measure", "Measure"],
+  ];
   const [creature, setCreature] = useState("");
   const [hiddenCreature, setHiddenCreature] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -172,30 +184,46 @@ export function MapEditor({
           {map.revealed.length} of {columns(map) * rows(map)} {cellWord} revealed
         </span>
       </div>
-      <div className="row" role="group" aria-label="Map tool">
-        {(
-          [
-            ["move", "Move tokens"],
-            ["reveal", `Reveal ${cellWord}`],
-            ["hide", `Hide ${cellWord}`],
-            ["wall", "Draw walls"],
-            ["door", "Doors"],
-            ["erase", "Erase walls"],
-            ["pin", "Pins"],
-            ["measure", "Measure"],
-          ] as const
-        ).map(([t, name]) => (
-          <button key={t} className="chip" aria-pressed={tool === t} onClick={() => setTool(t)}>
-            {name}
+      {narrow ? (
+        // A phone: one picker and one menu instead of three rows of buttons above the map (docs/design.md).
+        <div className="row" style={{ alignItems: "end", flexWrap: "nowrap" }}>
+          <label className="field" style={{ flex: 1, minWidth: 0 }}>
+            <span>Tool</span>
+            <select className="input" aria-label="Map tool" value={tool} onChange={(e) => setTool(e.target.value as MapTool)}>
+              {tools.map(([t, name]) => (
+                <option key={t} value={t}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <details className="menu">
+            <summary className="btn">More</summary>
+            <div className="menu-list">
+              <button className="btn btn-quiet" onClick={() => update((c) => ({ ...c, ...revealAll(c, map.id, true) }))}>
+                Reveal all
+              </button>
+              <button className="btn btn-quiet" onClick={() => update((c) => ({ ...c, ...revealAll(c, map.id, false) }))}>
+                Hide all
+              </button>
+            </div>
+          </details>
+        </div>
+      ) : (
+        <div className="row" role="group" aria-label="Map tool">
+          {tools.map(([t, name]) => (
+            <button key={t} className="chip" aria-pressed={tool === t} onClick={() => setTool(t)}>
+              {name}
+            </button>
+          ))}
+          <button className="chip chip-quiet" onClick={() => update((c) => ({ ...c, ...revealAll(c, map.id, true) }))}>
+            Reveal all
           </button>
-        ))}
-        <button className="chip chip-quiet" onClick={() => update((c) => ({ ...c, ...revealAll(c, map.id, true) }))}>
-          Reveal all
-        </button>
-        <button className="chip chip-quiet" onClick={() => update((c) => ({ ...c, ...revealAll(c, map.id, false) }))}>
-          Hide all
-        </button>
-      </div>
+          <button className="chip chip-quiet" onClick={() => update((c) => ({ ...c, ...revealAll(c, map.id, false) }))}>
+            Hide all
+          </button>
+        </div>
+      )}
       <p className="muted small" style={{ margin: 0 }}>
         {
           {
