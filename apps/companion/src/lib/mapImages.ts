@@ -3,7 +3,7 @@
  * sent to anyone, every square they may not see is painted over on a canvas and the result re-encoded, so the
  * hidden pixels are not in what they receive.
  */
-import { HANDOUT_IMAGE_EDGE, MAX_MAP_EDGE, TILE_SIZE, tileColumns, tileRows, type Rect } from "@mimicbox/table";
+import { HANDOUT_IMAGE_EDGE, MAX_MAP_EDGE, TILE_SIZE, tileColumns, tileRows, type Point } from "@mimicbox/table";
 
 const QUALITY = 0.85;
 
@@ -49,14 +49,22 @@ export async function cutMap(file: File): Promise<{ width: number; height: numbe
   }
 }
 
-/** A tile with the given rectangles painted solid, re-encoded so the covered pixels are gone. */
-export async function coverTile(tile: string, cover: Rect[]): Promise<string> {
-  if (cover.length === 0) return tile;
+/**
+ * A tile with everything outside the kept cell outlines painted solid, re-encoded so the covered pixels are gone.
+ * The tile rectangle and the outlines form one even-odd path: inside an outline is kept, the rest is painted.
+ */
+export async function coverTile(tile: string, keep: Point[][]): Promise<string> {
   const img = await loadImage(tile);
   const [c, ctx] = canvas(img.naturalWidth, img.naturalHeight);
   ctx.drawImage(img, 0, 0);
+  ctx.beginPath();
+  ctx.rect(0, 0, c.width, c.height);
+  for (const poly of keep) {
+    poly.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+    ctx.closePath();
+  }
   ctx.fillStyle = "#120d14";
-  for (const r of cover) ctx.fillRect(r.x, r.y, r.w, r.h);
+  ctx.fill("evenodd");
   return c.toDataURL("image/jpeg", QUALITY);
 }
 

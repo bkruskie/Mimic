@@ -19,6 +19,8 @@ import {
   setGrid,
   setRevealed,
   setWalls,
+  gridKind,
+  type GridKind,
   type MapScene,
   type Token,
 } from "@mimicbox/table";
@@ -106,7 +108,9 @@ export function MapsPanel({ campaign, update, onTilesChanged }: { campaign: Stud
 function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampaign; map: MapScene; update: (fn: (c: StudioCampaign) => StudioCampaign) => void; onDeleted: () => void }) {
   const [tiles, setTiles] = useState<{ tx: number; ty: number; url: string }[]>([]);
   const [tool, setTool] = useState<MapTool>("move");
-  const [grid, setGridDraft] = useState({ size: String(map.grid.size), offsetX: String(map.grid.offsetX), offsetY: String(map.grid.offsetY) });
+  const [grid, setGridDraft] = useState({ size: String(map.grid.size), offsetX: String(map.grid.offsetX), offsetY: String(map.grid.offsetY), kind: gridKind(map) });
+  const cellWord = gridKind(map) === "square" ? "squares" : "hexes";
+  const cellOne = gridKind(map) === "square" ? "square" : "hex";
   const [creature, setCreature] = useState("");
   const [hiddenCreature, setHiddenCreature] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -138,15 +142,15 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
           {live ? "Stop showing this map" : "Show this map to players"}
         </button>
         <span className="muted small" style={{ alignSelf: "center" }}>
-          {map.revealed.length} of {columns(map) * rows(map)} squares revealed
+          {map.revealed.length} of {columns(map) * rows(map)} {cellWord} revealed
         </span>
       </div>
       <div className="row" role="group" aria-label="Map tool">
         {(
           [
             ["move", "Move tokens"],
-            ["reveal", "Reveal squares"],
-            ["hide", "Hide squares"],
+            ["reveal", `Reveal ${cellWord}`],
+            ["hide", `Hide ${cellWord}`],
             ["wall", "Draw walls"],
             ["door", "Doors"],
             ["erase", "Erase walls"],
@@ -167,13 +171,13 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
       <p className="muted small" style={{ margin: 0 }}>
         {
           {
-            move: "Drag any token to a square.",
-            reveal: "Drag across squares to show them to players.",
-            hide: "Drag across squares to hide them again.",
-            wall: "Drag across squares that block sight. Players never see walls; they only affect exploring.",
-            door: "Tap a square to add a closed door, tap again to open it, and again to close it.",
+            move: `Drag any token to a ${cellOne}.`,
+            reveal: `Drag across ${cellWord} to show them to players.`,
+            hide: `Drag across ${cellWord} to hide them again.`,
+            wall: `Drag across ${cellWord} that block sight. Players never see walls; they only affect exploring.`,
+            door: `Tap a ${cellOne} to add a closed door, tap again to open it, and again to close it.`,
             erase: "Drag across walls and doors to remove them.",
-            measure: "Drag from one square to another to measure. Diagonal steps count 5 feet.",
+            measure: gridKind(map) === "square" ? "Drag from one square to another to measure. Diagonal steps count 5 feet." : "Drag from one hex to another to measure. Each hex counts 5 feet.",
             view: "",
           }[tool]
         }
@@ -208,7 +212,7 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
           <span>Reveal as the party explores</span>
         </label>
         <label className="field" style={{ width: 150 }}>
-          <span>Sight in squares</span>
+          <span>Sight in {cellWord}</span>
           <input
             className="input"
             inputMode="numeric"
@@ -219,7 +223,7 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
         </label>
       </div>
       <p className="muted small" style={{ margin: 0 }}>
-        When on, squares the party's tokens can see are revealed as they move. Walls and closed doors block sight; a sight of 0 means no limit. Revealed squares stay revealed.
+        When on, {cellWord} the party's tokens can see are revealed as they move. Walls and closed doors block sight; a sight of 0 means no limit. Revealed {cellWord} stay revealed.
       </p>
       <details>
         <summary style={{ cursor: "pointer" }}>Grid</summary>
@@ -228,11 +232,19 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
           style={{ alignItems: "end", marginTop: 8 }}
           onSubmit={(e) => {
             e.preventDefault();
-            update((c) => ({ ...c, ...setGrid(c, map.id, { size: Number(grid.size) || map.grid.size, offsetX: Number(grid.offsetX) || 0, offsetY: Number(grid.offsetY) || 0 }) }));
+            update((c) => ({ ...c, ...setGrid(c, map.id, { size: Number(grid.size) || map.grid.size, offsetX: Number(grid.offsetX) || 0, offsetY: Number(grid.offsetY) || 0, kind: grid.kind }) }));
           }}
         >
+          <label className="field" style={{ width: 190 }}>
+            <span>Grid shape</span>
+            <select className="input" value={grid.kind} onChange={(e) => setGridDraft({ ...grid, kind: e.target.value as GridKind })}>
+              <option value="square">Squares</option>
+              <option value="hex-rows">Hexes in rows (pointed tops)</option>
+              <option value="hex-columns">Hexes in columns (flat tops)</option>
+            </select>
+          </label>
           <label className="field" style={{ width: 110 }}>
-            <span>Square size (px)</span>
+            <span>{grid.kind === "square" ? "Square size (px)" : grid.kind === "hex-rows" ? "Hex width (px)" : "Hex height (px)"}</span>
             <input className="input" inputMode="numeric" value={grid.size} onChange={(e) => setGridDraft({ ...grid, size: e.target.value })} />
           </label>
           <label className="field" style={{ width: 90 }}>
@@ -245,7 +257,9 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
           </label>
           <button className="btn">Apply grid</button>
         </form>
-        <p className="muted small">Match the squares drawn on your map. Changing the grid hides every square again and clears walls and doors.</p>
+        <p className="muted small">
+          Match the grid drawn on your map. For hexes, the size is the distance between the centres of two neighbouring hexes in a {grid.kind === "hex-columns" ? "column" : "row"}. Changing the grid hides every cell again and clears walls and doors.
+        </p>
       </details>
       <h3>Tokens</h3>
       <ul className="rows" aria-label="Tokens">

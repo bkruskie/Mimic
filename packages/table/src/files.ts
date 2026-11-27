@@ -3,6 +3,7 @@
  * imported file is checked; characters go through the ruleset's own import checks.
  */
 import { CharacterImportError, importCharacter, type Character, type Content } from "@mimicbox/ruleset-dnd5e";
+import { GRID_KINDS, type GridKind } from "./grid.js";
 import { HANDOUT_MAX_LENGTH, isImageData, type Handout, type HostCampaign, type Member } from "./host.js";
 import type { MapScene, Token } from "./map.js";
 import { QUEST_STATUSES, WORLD_KINDS, WORLD_TEXT_MAX, type WorldEntry } from "./world.js";
@@ -42,7 +43,8 @@ const num = (x: unknown, min: number, max: number): x is number => typeof x === 
 function readMap(m: unknown): MapScene | null {
   if (!isRecord(m) || typeof m.id !== "string" || typeof m.name !== "string" || !num(m.width, 1, 8192) || !num(m.height, 1, 8192)) return null;
   const g = m.grid;
-  if (!isRecord(g) || !num(g.size, 16, 400) || !num(g.offsetX, 0, 400) || !num(g.offsetY, 0, 400)) return null;
+  if (!isRecord(g) || !num(g.size, 16, 400) || !num(g.offsetX, 0, 800) || !num(g.offsetY, 0, 800)) return null;
+  const kind = GRID_KINDS.includes(g.kind as GridKind) ? (g.kind as GridKind) : "square";
   const tokens: Token[] = (Array.isArray(m.tokens) ? m.tokens : []).filter(
     (t): t is Token => isRecord(t) && typeof t.id === "string" && typeof t.name === "string" && num(t.x, 0, 1000) && num(t.y, 0, 1000) && typeof t.color === "string",
   );
@@ -51,7 +53,7 @@ function readMap(m: unknown): MapScene | null {
     name: m.name.slice(0, 60),
     width: m.width,
     height: m.height,
-    grid: { size: g.size, offsetX: g.offsetX, offsetY: g.offsetY },
+    grid: { size: g.size, offsetX: g.offsetX, offsetY: g.offsetY, kind },
     revealed: (Array.isArray(m.revealed) ? m.revealed : []).filter((i): i is number => Number.isInteger(i) && (i as number) >= 0),
     tokens: tokens.map((t) => ({ id: t.id, name: t.name.slice(0, 40), x: t.x, y: t.y, memberId: typeof t.memberId === "string" ? t.memberId : null, hidden: t.hidden === true, color: /^#[0-9a-f]{6}$/i.test(t.color) ? t.color : "#C9973F" })),
     walls: (Array.isArray(m.walls) ? m.walls : []).filter((i): i is number => Number.isInteger(i) && (i as number) >= 0),

@@ -579,6 +579,45 @@ try {
   await dana.page.keyboard.press("Escape");
   await shot(cabin.page, "dm-lan-party");
   check(contacted.length === 0, `Dana's phone contacted no relay or server${contacted.length ? `: ${contacted.join(", ")}` : ""}`);
+
+  // ----- A hex grid: fog painted around one revealed hex -----
+  const hexChooser = cabin.page.waitForEvent("filechooser");
+  await cabin.page.getByRole("button", { name: "Add a map" }).click();
+  await (await hexChooser).setFiles(join(FIXTURES, "docks.png"));
+  await cabin.page.getByRole("button", { name: /^docks/ }).waitFor({ timeout: 20000 });
+  await cabin.page.getByText("Grid", { exact: true }).click();
+  await cabin.page.getByLabel("Grid shape").selectOption("hex-rows");
+  await cabin.page.getByLabel("Hex width (px)").fill("100");
+  await cabin.page.getByRole("button", { name: "Apply grid" }).click();
+  await cabin.page.getByRole("button", { name: "Reveal hexes" }).click();
+  const hexSurface = cabin.page.getByRole("img", { name: "docks, as you see it" }).locator(".map-surface");
+  await hexSurface.scrollIntoViewIfNeeded();
+  const hb = await hexSurface.boundingBox();
+  const hk = hb.width / 1100;
+  // Hex (1, 1): odd rows sit half a hex right, so its centre is at (200, 144) on a 100-pixel grid.
+  await cabin.page.mouse.click(hb.x + 200 * hk, hb.y + 144 * hk);
+  await eventually(async () => /1 of \d+ hexes revealed/.test(await cabin.page.locator("body").innerText()), "the DM switches a map to hexes and reveals one hex");
+  await cabin.page.getByRole("button", { name: "Show this map to players" }).click();
+  await shot(cabin.page, "dm-hex-map");
+  await dana.page.getByRole("button", { name: "Map", exact: true }).click();
+  const danaMap = dana.page.getByRole("img", { name: "docks, the parts you can see" });
+  await eventually(async () => (await danaMap.locator(".map-surface > img").count()) === 1, "Dana receives the one tile holding that hex");
+  const danaPixel = (x, y) =>
+    danaMap.locator(".map-surface > img").evaluate(
+      async (img, [px, py]) => {
+        await img.decode();
+        const c = Object.assign(document.createElement("canvas"), { width: img.naturalWidth, height: img.naturalHeight });
+        const ctx = c.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+        return Array.from(ctx.getImageData(px, py, 1, 1).data.slice(0, 3));
+      },
+      [x, y],
+    );
+  const dark = ([r, g, b]) => r < 40 && g < 30 && b < 40;
+  check(!dark(await danaPixel(200, 144)), "the revealed hex keeps its pixels");
+  check(dark(await danaPixel(305, 305)) && dark(await danaPixel(200, 40)) && dark(await danaPixel(110, 144)), "the red secret square, the hex above and the hex beside it are painted over");
+  await shot(dana.page, "dana-hex-map");
+  await dana.page.keyboard.press("Escape");
   await dana.context.close();
 
   await cabin.context.close();
