@@ -3,6 +3,7 @@
  * imported file is checked; characters go through the ruleset's own import checks.
  */
 import { CharacterImportError, importCharacter, type Character, type Content } from "@mimicbox/ruleset-dnd5e";
+import { readEncounters } from "./encounters.js";
 import { GRID_KINDS, type GridKind } from "./grid.js";
 import { HANDOUT_MAX_LENGTH, isImageData, type Handout, type HostCampaign, type Member } from "./host.js";
 import { PIN_LAYERS, PIN_TEXT_MAX, type MapScene, type Pin, type Token } from "./map.js";
@@ -162,6 +163,7 @@ export function importCampaign(
       handouts,
       maps,
       world,
+      encounters: readEncounters(c.encounters, maps.map((m) => m.id)),
       activeMapId: maps.some((m) => m.id === c.activeMapId) ? (c.activeMapId as string) : null,
       seen: {},
       createdAt: typeof c.createdAt === "string" ? c.createdAt : now,
