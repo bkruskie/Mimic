@@ -5,7 +5,7 @@
 import { CharacterImportError, importCharacter, type Character, type Content } from "@mimicbox/ruleset-dnd5e";
 import { GRID_KINDS, type GridKind } from "./grid.js";
 import { HANDOUT_MAX_LENGTH, isImageData, type Handout, type HostCampaign, type Member } from "./host.js";
-import type { MapScene, Token } from "./map.js";
+import { PIN_LAYERS, PIN_TEXT_MAX, type MapScene, type Pin, type Token } from "./map.js";
 import { QUEST_STATUSES, WORLD_KINDS, WORLD_TEXT_MAX, type WorldEntry } from "./world.js";
 import type { SharedRoll } from "./protocol.js";
 
@@ -59,6 +59,9 @@ function readMap(m: unknown): MapScene | null {
     walls: (Array.isArray(m.walls) ? m.walls : []).filter((i): i is number => Number.isInteger(i) && (i as number) >= 0),
     doors: (Array.isArray(m.doors) ? m.doors : []).filter((d): d is { index: number; open: boolean } => isRecord(d) && Number.isInteger(d.index) && typeof d.open === "boolean"),
     explore: isRecord(m.explore) && typeof m.explore.on === "boolean" && num(m.explore.radius, 0, 60) ? { on: m.explore.on, radius: m.explore.radius } : { on: false, radius: 0 },
+    pins: (Array.isArray(m.pins) ? m.pins : [])
+      .filter((p): p is Pin => isRecord(p) && typeof p.id === "string" && typeof p.label === "string" && p.label.trim() !== "" && Number.isInteger(p.x) && Number.isInteger(p.y) && (PIN_LAYERS as readonly unknown[]).includes(p.layer))
+      .map((p) => ({ id: p.id, x: p.x, y: p.y, label: p.label.slice(0, PIN_TEXT_MAX), layer: p.layer })),
   };
 }
 

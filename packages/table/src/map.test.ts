@@ -11,7 +11,9 @@ import {
   displayView,
   handlePlayerMessage,
   movePlayerToken,
+  placePin,
   playerView,
+  removePin,
   publicMap,
   revealAll,
   saveToken,
@@ -203,3 +205,27 @@ describe("turns and doors on the map", async () => {
     expect(publicMap(opened.campaign.maps![0]!, "alice").doors[0]).toEqual({ x: 1, y: 1, open: true });
   });
 });
+
+describe("pins", () => {
+  it("send only players' pins on revealed cells, never the DM's", () => {
+    let c = campaign();
+    c = placePin(c, "docks", { id: "p1", x: 1, y: 1, label: "Trap: poison needle", layer: "dm" });
+    c = placePin(c, "docks", { id: "p2", x: 1, y: 1, label: "Way out", layer: "players" });
+    c = placePin(c, "docks", { id: "p3", x: 5, y: 4, label: "Boat", layer: "players" });
+    expect(publicMap(c.maps![0]!, "alice").pins).toEqual([]);
+    c = setRevealed(c, "docks", [{ x: 1, y: 1 }], true);
+    const pins = publicMap(c.maps![0]!, "alice").pins;
+    expect(pins).toEqual([{ id: "p2", x: 1, y: 1, label: "Way out" }]);
+    expect(JSON.stringify(playerView(c, new Set(["alice"]), content, "alice"))).not.toContain("poison");
+  });
+
+  it("replace a pin on the same cell and layer, refuse empty or off-map pins, and come out", () => {
+    let c = placePin(campaign(), "docks", { id: "a", x: 2, y: 2, label: "Ambush", layer: "dm" });
+    c = placePin(c, "docks", { id: "b", x: 2, y: 2, label: "Ambush at dusk", layer: "dm" });
+    c = placePin(c, "docks", { id: "c", x: 2, y: 2, label: "   ", layer: "players" });
+    c = placePin(c, "docks", { id: "d", x: 99, y: 2, label: "Nowhere", layer: "players" });
+    expect(c.maps![0]!.pins).toEqual([{ id: "b", x: 2, y: 2, label: "Ambush at dusk", layer: "dm" }]);
+    expect(removePin(c, "docks", "b").maps![0]!.pins).toEqual([]);
+  });
+});
+

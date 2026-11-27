@@ -311,9 +311,34 @@ try {
     await dm.page.mouse.move(...(await at(...to)), { steps: 8 });
     await dm.page.mouse.up();
   };
+
+  // Pins on two layers: the DM's own, and the players' (shown on revealed squares only).
+  await dm.page.getByRole("button", { name: "Pins", exact: true }).click();
+  await dm.page.getByLabel("Pin text").fill("Trap: poison needle");
+  await dm.page.mouse.click(...(await at(50, 50)));
+  await dm.page.getByRole("button", { name: "Players too" }).click();
+  await dm.page.getByLabel("Pin text").fill("Way out");
+  await dm.page.mouse.click(...(await at(150, 50)));
+  await dm.page.getByLabel("Pin text").fill("Boat");
+  await dm.page.mouse.click(...(await at(850, 450))); // a square nobody has revealed
+  const dmMapPins = dm.page.getByRole("img", { name: "docks, as you see it" }).locator(".pin");
+  check((await dmMapPins.count()) === 3, "the DM places three pins: one only for themselves, two for players");
+  if ((await aliceMap.count()) === 0) await alice.page.getByRole("button", { name: "Map", exact: true }).click();
+  await eventually(async () => (await aliceMap.getByLabel("Pin: Way out").count()) === 1, "Alice sees the players' pin on a revealed square");
+  check((await aliceMap.locator(".pin").count()) === 1, "but not the DM's trap, or the pin on a square she can't see");
+  const pinBox = await aliceMap.getByLabel("Pin: Way out").boundingBox();
+  const mapBoxA = await aliceMap.boundingBox();
+  check(pinBox.y >= mapBoxA.y && pinBox.y + pinBox.height <= mapBoxA.y + mapBoxA.height, "and the pin on the top row is drawn inside the map, not cut off");
+  await eventually(async () => (await display.locator(".pin").count()) === 1, "the display shows the same one pin");
+  await dm.page.getByRole("button", { name: "Your pins" }).click();
+  check((await dmMapPins.count()) === 2, "the DM can hide their own pins from their view");
+  await dm.page.getByRole("button", { name: "Your pins" }).click();
+  await shot(dm.page, "dm-pins");
+  await shot(alice.page, "alice-pins");
+  await alice.page.keyboard.press("Escape");
   await dm.page.getByRole("button", { name: "Draw walls" }).click();
   await drag([450, 50], [450, 550]);
-  await dm.page.getByRole("button", { name: "Doors" }).click();
+  await dm.page.getByRole("button", { name: "Doors", exact: true }).click();
   await dm.page.mouse.click(...(await at(450, 250)));
   await dm.page.getByRole("checkbox", { name: "Reveal as the party explores" }).check();
   await eventually(async () => /(\d+) of 66 squares revealed/.test(await text(dm.page)) && Number(/(\d+) of 66/.exec(await text(dm.page))[1]) >= 24, "exploring reveals the room Wren stands in");

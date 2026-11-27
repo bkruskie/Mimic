@@ -19,8 +19,12 @@ import {
   setGrid,
   setRevealed,
   setWalls,
+  PIN_TEXT_MAX,
   gridKind,
+  placePin,
+  removePin,
   type GridKind,
+  type PinLayer,
   type MapScene,
   type Token,
 } from "@mimicbox/table";
@@ -116,6 +120,11 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
   const [creature, setCreature] = useState("");
   const [hiddenCreature, setHiddenCreature] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [pinText, setPinText] = useState("");
+  const [pinLayer, setPinLayer] = useState<PinLayer>("dm");
+  const [pinHint, setPinHint] = useState<string | null>(null);
+  // What the DM shows on their own map. Players' views never change with these.
+  const [show, setShow] = useState({ shading: true, walls: true, myPins: true });
   const live = campaign.activeMapId === map.id;
   const revealed = useMemo(() => new Set(map.revealed), [map.revealed]);
   const walls = useMemo(() => new Set(map.walls ?? []), [map.walls]);
@@ -156,6 +165,7 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
             ["wall", "Draw walls"],
             ["door", "Doors"],
             ["erase", "Erase walls"],
+            ["pin", "Pins"],
             ["measure", "Measure"],
           ] as const
         ).map(([t, name]) => (
@@ -179,21 +189,51 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
             wall: `Drag across ${cellWord} that block sight. Players never see walls; they only affect exploring.`,
             door: `Tap a ${cellOne} to add a closed door, tap again to open it, and again to close it.`,
             erase: "Drag across walls and doors to remove them.",
+            pin: `Tap a ${cellOne} to place the pin there. Tap a pin's ${cellOne} again to remove it. Players see their pins once the ${cellOne} is revealed.`,
             measure: kind === "square" ? "Drag from one square to another to measure. Diagonal steps count 5 feet." : kind === "none" ? "Drag between any two points to measure in a straight line." : "Drag from one hex to another to measure. Each hex counts 5 feet.",
             view: "",
           }[tool]
         }
       </p>
+      {tool === "pin" && (
+        <div className="row" style={{ alignItems: "end" }}>
+          <label className="field" style={{ flex: 1, minWidth: 180 }}>
+            <span>Pin text</span>
+            <input className="input" value={pinText} maxLength={PIN_TEXT_MAX} onChange={(e) => setPinText(e.target.value)} placeholder="Trap: poison needle" />
+          </label>
+          <div role="group" aria-label="Who sees the pin" className="row" style={{ gap: 6 }}>
+            <button type="button" className="chip" aria-pressed={pinLayer === "dm"} onClick={() => setPinLayer("dm")}>
+              Only you
+            </button>
+            <button type="button" className="chip" aria-pressed={pinLayer === "players"} onClick={() => setPinLayer("players")}>
+              Players too
+            </button>
+          </div>
+        </div>
+      )}
+      {pinHint && tool === "pin" && <p className="notice small">{pinHint}</p>}
       <MapView
         label={`${map.name}, as you see it`}
         map={map}
         tiles={tiles}
         tokens={map.tokens}
-        revealed={revealed}
+        revealed={show.shading ? revealed : undefined}
         tool={tool}
         canMove={() => tool === "move"}
-        walls={walls}
-        doors={(map.doors ?? []).map((d) => ({ x: d.index % columns(map), y: Math.floor(d.index / columns(map)), open: d.open }))}
+        walls={show.walls ? walls : undefined}
+        doors={show.walls ? (map.doors ?? []).map((d) => ({ x: d.index % columns(map), y: Math.floor(d.index / columns(map)), open: d.open })) : undefined}
+        pins={(map.pins ?? []).filter((p) => show.myPins || p.layer === "players")}
+        onPin={(x, y) => {
+          const here = (map.pins ?? []).find((p) => p.x === x && p.y === y && p.layer === pinLayer);
+          if (here) {
+            setPinHint(null);
+            update((c) => ({ ...c, ...removePin(c, map.id, here.id) }));
+          } else if (!pinText.trim()) setPinHint("Type the pin's text first, then tap where it goes.");
+          else {
+            setPinHint(null);
+            update((c) => ({ ...c, ...placePin(c, map.id, { id: newId(), x, y, label: pinText, layer: pinLayer }) }));
+          }
+        }}
         activeTokenId={campaign.activeMapId === map.id ? actingTokenId(campaign) : null}
         onMove={(t, x, y) => update((c) => ({ ...c, ...explore(saveToken(c, map.id, { ...t, x, y }), map.id) }))}
         onPaint={(cells, paintTool) =>
@@ -204,6 +244,18 @@ function MapEditor({ campaign, map, update, onDeleted }: { campaign: StudioCampa
         }
         onDoor={(x, y) => update((c) => ({ ...c, ...cycleDoor(c, map.id, x, y) }))}
       />
+      <div className="row" role="group" aria-label="Show on your map" style={{ gap: 6, alignItems: "center" }}>
+        <span className="muted small">On your map:</span>
+        <button type="button" className="chip" aria-pressed={show.shading} onClick={() => setShow({ ...show, shading: !show.shading })}>
+          Shading
+        </button>
+        <button type="button" className="chip" aria-pressed={show.walls} onClick={() => setShow({ ...show, walls: !show.walls })}>
+          Walls and doors
+        </button>
+        <button type="button" className="chip" aria-pressed={show.myPins} onClick={() => setShow({ ...show, myPins: !show.myPins })}>
+          Your pins
+        </button>
+      </div>
       <div className="row" style={{ alignItems: "end" }}>
         <label className="row" style={{ alignItems: "center", gap: 8, minHeight: 44 }}>
           <input
