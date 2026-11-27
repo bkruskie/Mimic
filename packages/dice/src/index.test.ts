@@ -131,7 +131,9 @@ describe("secureRandomInt", () => {
     for (let i = 0; i < n; i++) counts[secureRandomInt(20) - 1]!++;
     const expected = n / 20;
     const chi = counts.reduce((sum, c) => sum + (c - expected) ** 2 / expected, 0);
-    // 43.8 is the 0.999 quantile for 19 degrees of freedom, so a fair die fails about once in a thousand runs.
-    expect(chi).toBeLessThan(43.8);
+    // 64.4 is about the 0.999999 quantile for 19 degrees of freedom, so a fair die fails about once in a million runs
+    // (0.999, used before, failed one run in a thousand: often enough to break CI now and then). A real bias, such as
+    // one face never coming up, scores in the thousands.
+    expect(chi).toBeLessThan(64.4);
   });
 });
