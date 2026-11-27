@@ -5,6 +5,7 @@
 import { CharacterImportError, derive, importCharacter, type Character, type Content } from "@mimicbox/ruleset-dnd5e";
 import { actingTokenId, publicCombat, setMemberInitiative, type Combat } from "./combat.js";
 import { activeMap, movePlayerToken, publicMap, togglePlayerDoor, type MapScene } from "./map.js";
+import { publicWorld, type WorldEntry } from "./world.js";
 import {
   PROTOCOL_VERSION,
   parsePlayerMessage,
@@ -55,6 +56,8 @@ export interface HostCampaign {
   handouts?: Handout[];
   /** The fight in progress, if any. */
   combat?: Combat | null;
+  /** Places, people, factions, quests and lore. */
+  world?: WorldEntry[];
   /** Battle maps, and the one players see. */
   maps?: MapScene[];
   activeMapId?: string | null;
@@ -232,6 +235,7 @@ export function playerView(campaign: HostCampaign, connected: ReadonlySet<string
     msg({ t: "handouts", handouts: revealedHandouts(campaign) }),
     msg({ t: "combat", combat: publicCombat(campaign) }),
     msg({ t: "map", map: map ? publicMap(map, viewer, actingTokenId(campaign)) : null }),
+    msg({ t: "world", entries: publicWorld(campaign) }),
   ];
 }
 

@@ -8,6 +8,7 @@ export const PROTOCOL_VERSION = 1 as const;
 import type { PublicCombat } from "./combat.js";
 import { parseEffect, type Effect } from "./effects.js";
 import type { PublicMap } from "./map.js";
+import type { PublicWorldEntry } from "./world.js";
 
 /** Largest message accepted from a player: a character file with a small portrait fits comfortably. */
 export const MAX_MESSAGE_BYTES = 256 * 1024;
@@ -74,6 +75,7 @@ export type HostMessage =
   | { t: "combat"; v: number; combat: PublicCombat | null }
   | { t: "effect"; v: number; effectId: string; effect: Effect }
   | { t: "map"; v: number; map: PublicMap | null }
+  | { t: "world"; v: number; entries: PublicWorldEntry[] }
   /** One map tile, already painted over where the fog is. */
   | { t: "tile"; v: number; mapId: string; tx: number; ty: number; version: string; data: string }
   | { t: "ack"; v: number; commandId: string };
@@ -152,6 +154,8 @@ export function parseHostMessage(raw: unknown): HostMessage | null {
       return Array.isArray(raw.rolls) ? (raw as HostMessage) : null;
     case "handouts":
       return Array.isArray(raw.handouts) ? (raw as HostMessage) : null;
+    case "world":
+      return Array.isArray(raw.entries) ? (raw as HostMessage) : null;
     case "map":
       return raw.map === null || (isRecord(raw.map) && Array.isArray(raw.map.tiles) && Array.isArray(raw.map.tokens)) ? (raw as HostMessage) : null;
     case "tile":

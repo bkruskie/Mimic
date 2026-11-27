@@ -16,6 +16,7 @@ import {
   type PlayerMessage,
   type PublicCombat,
   type PublicMap,
+  type PublicWorldEntry,
   type Effect,
   type PublicHandout,
   type SharedRoll,
@@ -47,6 +48,8 @@ interface TableState {
   combat: PublicCombat | null;
   /** This device's identity in the game, from the DM's welcome. */
   memberId: string | null;
+  /** World notes the DM has revealed. */
+  world: PublicWorldEntry[];
   /** The map in play, and the tiles received for it so far. */
   map: PublicMap | null;
   mapTiles: { tx: number; ty: number; url: string }[];
@@ -72,6 +75,8 @@ export function TableProvider({ children }: { children: ReactNode }) {
   const [combat, setCombat] = useState<PublicCombat | null>(null);
   const [memberId, setMemberId] = useState<string | null>(null);
   const [map, setMap] = useState<PublicMap | null>(null);
+  const [world, setWorld] = useState<PublicWorldEntry[]>([]);
+  const knownWorld = useRef<Set<string> | null>(null);
   const [tileStore, setTileStore] = useState<Map<string, string>>(new Map());
   const effectHandler = useRef<((e: Effect) => void) | null>(null);
   const appliedEffects = useRef(new Set<string>());
@@ -125,6 +130,7 @@ export function TableProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     welcomed.current = false;
     knownHandouts.current = null;
+    knownWorld.current = null;
     setStatus("connecting");
     setProblem(null);
     const hello = () => link.current?.send({ t: "hello", v: PROTOCOL_VERSION, invite: invite.key, playerName: seat.playerName }, invite.host);
@@ -168,6 +174,12 @@ export function TableProvider({ children }: { children: ReactNode }) {
         } else if (m.t === "party") setParty(m.members);
         else if (m.t === "rolls") setRolls(m.rolls);
         else if (m.t === "combat") setCombat(m.combat);
+        else if (m.t === "world") {
+          const fresh = m.entries.filter((e) => knownWorld.current && !knownWorld.current.has(e.id));
+          knownWorld.current = new Set(m.entries.map((e) => e.id));
+          setWorld(m.entries);
+          if (fresh.length) toast(fresh.length === 1 ? `New in your journal: ${fresh[0]!.title}` : `${fresh.length} new journal entries`);
+        }
         else if (m.t === "map") {
           setMap(m.map);
           // Keep only tiles of the current versions; older ones show squares that have changed.
@@ -217,6 +229,7 @@ export function TableProvider({ children }: { children: ReactNode }) {
       setHandouts([]);
       setCombat(null);
       setMap(null);
+      setWorld([]);
       setTileStore(new Map());
       await vault?.setSetting(SEAT_SETTING, next);
       setSeat(next);
@@ -234,6 +247,7 @@ export function TableProvider({ children }: { children: ReactNode }) {
     setHandouts([]);
     setCombat(null);
     setMap(null);
+    setWorld([]);
     setTileStore(new Map());
   }, [vault]);
 
@@ -275,8 +289,8 @@ export function TableProvider({ children }: { children: ReactNode }) {
   const toggleDoor = useCallback((x: number, y: number) => enqueue({ t: "door", v: PROTOCOL_VERSION, commandId: newId(), x, y }), [enqueue]);
 
   const value = useMemo<TableState>(
-    () => ({ seat, invite, status, problem, party, rolls, handouts, combat, memberId, map, mapTiles, moveToken, toggleDoor, join, leave, shareCharacter, shareRoll, setEffectHandler }),
-    [seat, invite, status, problem, party, rolls, handouts, combat, memberId, map, mapTiles, moveToken, toggleDoor, join, leave, shareCharacter, shareRoll, setEffectHandler],
+    () => ({ seat, invite, status, problem, party, rolls, handouts, combat, memberId, world, map, mapTiles, moveToken, toggleDoor, join, leave, shareCharacter, shareRoll, setEffectHandler }),
+    [seat, invite, status, problem, party, rolls, handouts, combat, memberId, world, map, mapTiles, moveToken, toggleDoor, join, leave, shareCharacter, shareRoll, setEffectHandler],
   );
   return <TableContext.Provider value={value}>{children}</TableContext.Provider>;
 }
