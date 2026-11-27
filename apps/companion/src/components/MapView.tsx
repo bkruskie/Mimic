@@ -6,7 +6,7 @@
 import { TILE_SIZE, cellAt as gridCellAt, cellCentre, cellPolygon, columns, distanceFeet, gridKind, gridPath, polygonPath, rows, tokenSpotAt, type MapScene, type Point, type Token } from "@mimicbox/table";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 
-export type MapTool = "view" | "reveal" | "hide" | "move" | "measure" | "wall" | "erase" | "door";
+export type MapTool = "view" | "reveal" | "hide" | "move" | "measure" | "wall" | "erase" | "door" | "pin";
 /** Tools that paint across squares by dragging. */
 export type PaintTool = "reveal" | "hide" | "wall" | "erase";
 
@@ -25,6 +25,10 @@ interface Props {
   walls?: ReadonlySet<number>;
   /** Doors drawn on the map. With `onDoor` in the view tool, tapping one opens or closes it. */
   doors?: { x: number; y: number; open: boolean }[];
+  /** Pins to draw. Those on the DM's layer get the dashed "only you" look. */
+  pins?: { id: string; x: number; y: number; label: string; layer?: "dm" | "players" }[];
+  /** With the pin tool, a tap on a cell. */
+  onPin?: (x: number, y: number) => void;
   /** The token whose turn it is. */
   activeTokenId?: string | null;
   /** Fit the whole map in the box instead of its width (the table display). */
@@ -32,7 +36,7 @@ interface Props {
   label: string;
 }
 
-export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove = () => false, onMove, onPaint, onDoor, walls, doors, activeTokenId = null, fit = "width", label }: Props) {
+export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove = () => false, onMove, onPaint, onDoor, walls, doors, pins, onPin, activeTokenId = null, fit = "width", label }: Props) {
   const [ruler, setRuler] = useState<{ from: { x: number; y: number }; to: { x: number; y: number } } | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const surface = useRef<HTMLDivElement>(null);
@@ -98,6 +102,11 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
       setMeasuring(true);
       return;
     }
+    if (tool === "pin" && onPin) {
+      const c = cellAt(e);
+      onPin(c.x, c.y);
+      return;
+    }
     if (tool === "door" && onDoor) {
       const c = cellAt(e);
       onDoor(c.x, c.y);
@@ -138,7 +147,7 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
       <div className="map-box" ref={box} role="img" aria-label={label}>
         <div
           ref={surface}
-          className={`map-surface ${painting || tool === "measure" || tool === "door" ? "painting" : ""}`}
+          className={`map-surface ${painting || tool === "measure" || tool === "door" || tool === "pin" ? "painting" : ""}`}
           style={{ width: map.width * scale, height: map.height * scale }}
           onPointerDown={down}
           onPointerMove={moveOver}
@@ -184,6 +193,19 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
               </g>
             )}
           </svg>
+          {pins?.map((p) => {
+            const { cx, cy } = center(p.x, p.y);
+            return (
+              <span
+                key={p.id}
+                className={`pin ${p.layer === "dm" ? "dm" : ""}`}
+                aria-label={`Pin: ${p.label}${p.layer === "dm" ? " (only you)" : ""}`}
+                style={{ left: cx * scale, top: (cy - size * 0.5) * scale + 2, fontSize: Math.max(11, Math.min(15, size * 0.2 * scale)) }}
+              >
+                {p.label}
+              </span>
+            );
+          })}
           {tokens.map((t) => {
             const at = drag?.token.id === t.id ? drag : t;
             const { cx, cy } = center(at.x, at.y);

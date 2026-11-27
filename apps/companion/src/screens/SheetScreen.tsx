@@ -288,6 +288,7 @@ export function SheetScreen({ id }: { id: string }) {
             tiles={table.mapTiles}
             tokens={table.map.tokens}
             doors={table.map.doors ?? []}
+            pins={table.map.pins ?? []}
             activeTokenId={table.map.activeTokenId ?? null}
             onDoor={mapTool === "view" ? (x, y) => table.toggleDoor(x, y) : undefined}
             canMove={(t) => t.memberId !== null && t.memberId === table.memberId}

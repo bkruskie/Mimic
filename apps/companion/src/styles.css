@@ -1443,3 +1443,25 @@ details.feature[open] {
   max-height: 220px;
   width: auto;
 }
+
+/* Map pins: a small label at the top of its cell, inside the map so edge pins aren't clipped. The DM's own layer
+   wears the dashed "only you" outline. */
+.map-surface .pin {
+  position: absolute;
+  transform: translateX(-50%);
+  max-width: 180px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(36, 26, 38, 0.92);
+  color: var(--bone);
+  border: 1px solid var(--brass);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  z-index: 2;
+}
+.map-surface .pin.dm {
+  border: 1px dashed #9b7fd1;
+  color: #d8cbf5;
+}

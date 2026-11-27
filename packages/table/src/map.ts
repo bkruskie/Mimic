@@ -44,6 +44,22 @@ export interface MapScene {
   doors?: { index: number; open: boolean }[];
   /** Reveal squares as the party's tokens come to see them. radius 0 means no limit. */
   explore?: { on: boolean; radius: number };
+  /** Labelled pins, each on a layer: the DM's own, or the players' (shown once its cell is revealed). */
+  pins?: Pin[];
+}
+
+/** Map layers a pin can sit on. */
+export const PIN_LAYERS = ["dm", "players"] as const;
+export type PinLayer = (typeof PIN_LAYERS)[number];
+export const PIN_TEXT_MAX = 40;
+
+/** A labelled marker on a cell: a trap or an ambush on the DM's layer, an exit or a meeting point on the players'. */
+export interface Pin {
+  id: string;
+  x: number;
+  y: number;
+  label: string;
+  layer: PinLayer;
 }
 
 /** What a player or display receives about the map in play. */
@@ -60,6 +76,8 @@ export interface PublicMap {
   doors: { x: number; y: number; open: boolean }[];
   /** The token whose turn it is in combat, if the audience can see it. */
   activeTokenId: string | null;
+  /** Pins on the players' layer, on revealed cells. The DM's layer is never sent. */
+  pins: { id: string; x: number; y: number; label: string }[];
 }
 
 export const tileColumns = (m: Pick<MapScene, "width">) => Math.ceil(m.width / TILE_SIZE);
@@ -122,6 +140,7 @@ export function publicMap(m: MapScene, viewer: string | null, activeTokenId: str
     tokens,
     doors,
     activeTokenId: activeTokenId && tokens.some((t) => t.id === activeTokenId) ? activeTokenId : null,
+    pins: (m.pins ?? []).filter((p) => p.layer === "players" && isRevealed(m, p.x, p.y)).map(({ id, x, y, label }) => ({ id, x, y, label })),
   };
 }
 
@@ -315,4 +334,21 @@ export function togglePlayerDoor(c: HostCampaign, memberId: string, x: number, y
   // Next to the token: one step, or with no grid within a cell and a half (a diagonal neighbour).
   if (!door || !own || !isRevealed(m, x, y) || cellDistance(m, own, { x, y }) > (isGridless(m) ? 1.5 : 1)) return null;
   return explore(withMap(c, m.id, (s) => ({ ...s, doors: (s.doors ?? []).map((d) => (d.index === i ? { ...d, open: !d.open } : d)) })), m.id);
+}
+
+// ---------- pins ----------
+
+/** Adds a pin, or replaces the one already on that cell and layer. Empty labels are refused. */
+export function placePin(c: HostCampaign, mapId: string, pin: Pin): HostCampaign {
+  const label = pin.label.trim().slice(0, PIN_TEXT_MAX);
+  if (!label || !PIN_LAYERS.includes(pin.layer)) return c;
+  return withMap(c, mapId, (m) => {
+    if (!Number.isInteger(pin.x) || !Number.isInteger(pin.y) || pin.x < 0 || pin.y < 0 || pin.x >= columns(m) || pin.y >= rows(m)) return m;
+    const others = (m.pins ?? []).filter((p) => !(p.x === pin.x && p.y === pin.y && p.layer === pin.layer));
+    return { ...m, pins: [...others, { ...pin, label }] };
+  });
+}
+
+export function removePin(c: HostCampaign, mapId: string, pinId: string): HostCampaign {
+  return withMap(c, mapId, (m) => ({ ...m, pins: (m.pins ?? []).filter((p) => p.id !== pinId) }));
 }
