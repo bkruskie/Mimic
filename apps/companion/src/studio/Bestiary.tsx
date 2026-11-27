@@ -38,7 +38,9 @@ export function useMonsters(open: boolean): MonsterDef[] | null | "unavailable" 
 /** Fetches the bestiary in the background while online, so it's on this computer for play without internet. */
 export function prefetchBestiary(): void {
   if (!navigator.onLine) return;
-  const start = () => void loadMonsters().catch(() => undefined);
+  const start = () => {
+    if (navigator.onLine) void loadMonsters().catch(() => undefined);
+  };
   if ("requestIdleCallback" in window) window.requestIdleCallback(start, { timeout: 10000 });
   else setTimeout(start, 3000);
 }

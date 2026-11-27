@@ -198,6 +198,21 @@ try {
   await shot("vault-with-character");
   check(true, "vault lists the character with class and species");
 
+  // Theme: dark by default, light for a bright room, remembered on this device.
+  const themeOf = () => page.evaluate(() => document.documentElement.dataset.theme);
+  check((await themeOf()) === "dark", "the sheet starts in the dark theme");
+  await page.getByRole("group", { name: "Theme" }).getByRole("button", { name: "Light" }).click();
+  check((await themeOf()) === "light", "Light switches the theme");
+  await page.reload();
+  await page.getByText("Rogue 3 (Thief), Elf (Wood Elf)").waitFor();
+  check((await themeOf()) === "light", "and it is remembered after a reload");
+  await page.getByText("Rogue 3 (Thief), Elf (Wood Elf)").click();
+  await page.getByRole("button", { name: "Back to the vault" }).waitFor();
+  await shot("sheet-light");
+  await page.getByRole("button", { name: "Back to the vault" }).click();
+  await page.getByRole("group", { name: "Theme" }).getByRole("button", { name: "Dark" }).click();
+  check((await themeOf()) === "dark", "Dark switches back");
+
   // ----- A spellcaster: Human Wizard (Sage), standard array -----
   await tap("button", "Build a character");
   await page.getByRole("button", { name: /^Wizard/ }).click();

@@ -38,6 +38,13 @@ Every screen is built for all four shapes, and tested at each:
 1. **The world is pages, not lists.** An entry has a large picture, a trail showing where it sits, and links to other entries.
 2. **Players get the same depth for what they know.** Their journal uses the same pages, showing only what has been revealed.
 
+## Themes and texture
+
+1. **Colours come from tokens.** Every colour in `styles.css` is a token on `:root` (the map's own art aside). A theme is a set of token values under `:root[data-theme="…"]`; nothing else changes.
+2. **Two themes now.** Dark, "inside the chest", is the default. Light, "Parchment", is for bright rooms and projectors. The choice belongs to the device, not the campaign (Dark, Light or Match device). It is set from the vault, the studio's campaign list or Prepare → Campaign, and a table display opened from the studio follows it.
+3. **Texture is quiet.** A fine generated grain on the page and on every surface, a faint lamp glow from the top, and a lacquer highlight on panels. All of it is generated in CSS, so there are no image files and nothing licensed. Texture never sits on the map, and text contrast is checked with it on.
+4. **A handout is paper on either theme** (`--paper`, `--ink`). DM-only content wears the violet veil (`--veil`) on both themes.
+
 ## Later polish
 
-Textured surfaces, themes per game system (warm brass for D&D, deep red and gold for Pathfinder, synthwave for Neon Odyssey) and richer motion come once the structure above is in place. The polish goes on top of the layout rules here; it never adds dead space or buries the map.
+Themes per game system (deep red and gold for Pathfinder, synthwave for Neon Odyssey) arrive with those rulesets, as more token sets. Richer motion comes later too. The polish goes on top of the layout rules here; it never adds dead space or buries the map.
