@@ -325,11 +325,14 @@ try {
   await eventually(async () => (await display.locator(".display-map .map-surface > img").count()) > 2, "and the newly seen tiles reach the table display");
 
   // A door next to Wren (she stands at column 1, row 0): Alice opens it from her sheet.
+  await alice.page.getByRole("button", { name: "Map", exact: true }).click();
+  await aliceMap.locator(".map-surface").waitFor();
+  const aliceDoorsBefore = await aliceMap.locator(".map-overlay .door").count();
   await dm.page.mouse.click(...(await at(250, 150)));
   const dmDoors = dm.page.getByRole("img", { name: "docks, as you see it" }).locator(".map-overlay .door.open");
   const openBefore = await dmDoors.count();
-  await alice.page.getByRole("button", { name: "Map", exact: true }).click();
-  await eventually(async () => (await aliceMap.locator(".map-overlay .door").count()) >= 1, "Alice sees the door next to her");
+  // Wait for this new door to reach Alice's map, not one she could already see.
+  await eventually(async () => (await aliceMap.locator(".map-overlay .door").count()) > aliceDoorsBefore, "Alice sees the door next to her");
   const ab = await aliceMap.locator(".map-surface").boundingBox();
   const ak2 = ab.width / 1100;
   await alice.page.mouse.click(ab.x + 250 * ak2, ab.y + 150 * ak2);
@@ -377,6 +380,8 @@ try {
   await entry.getByLabel("Paragraph 1").fill("A rain-soaked harbour town.");
   await entry.getByRole("button", { name: "Only you" }).click();
   await entry.getByRole("checkbox", { name: "Players know about this place" }).check();
+  await entry.getByLabel("Picture of Port Ashen").setInputFiles(join(FIXTURES, "docks.png"));
+  await entry.getByRole("button", { name: "Picture shown to players" }).click();
   await entry.getByRole("button", { name: "Save place" }).click();
   await world.getByRole("button", { name: "New place" }).click();
   await entry.getByLabel("Place name").fill("The Drowned Vault");
@@ -389,6 +394,8 @@ try {
   await entry.getByRole("button", { name: "Only you" }).click();
   await entry.getByRole("button", { name: "Add a paragraph" }).click();
   await entry.getByLabel("Paragraph 2").fill("Secretly serves the drowned god.");
+  await entry.getByLabel("Picture of Mara the ferrywoman").setInputFiles(join(FIXTURES, "docks.png"));
+  await entry.getByRole("button", { name: "Picture shown to players" }).waitFor();
   await entry.getByRole("checkbox", { name: "Players know about this person" }).check();
   await shot(dm.page, "dm-world");
   await entry.getByRole("button", { name: "Save person" }).click();
@@ -399,6 +406,8 @@ try {
   const read = await journal.innerText();
   check(/Port Ashen/.test(read) && /In Port Ashen/.test(read) && /Grey cloak, kind eyes/.test(read), "Alice reads Port Ashen and Mara's public description");
   check(!/drowned god/i.test(read) && !/Drowned Vault/.test(read) && !/lighthouse/.test(read), "but not Mara's secret or the hidden place");
+  await journal.getByText("Port Ashen", { exact: true }).click();
+  await eventually(async () => journal.locator("img.handout-image").evaluateAll((imgs) => imgs.length === 1 && imgs[0].alt === "Port Ashen" && imgs[0].naturalWidth > 0), "Alice sees Port Ashen's picture, and not Mara's hidden portrait");
   await shot(alice.page, "alice-journal");
   await alice.page.keyboard.press("Escape");
 
@@ -496,7 +505,7 @@ try {
   await shot(cabin.page, "dm-offline");
   await cabin.page.waitForTimeout(500);
   await cabin.page.reload();
-  if (await cabin.page.getByRole("heading", { name: "Snowbound" }).count() === 0) await cabin.page.getByRole("button", { name: /Snowbound/ }).click();
+  await cabin.page.getByRole("heading", { name: "Snowbound" }).waitFor(); // the address keeps the campaign open
   await cabinWorld.getByText("Hollow Keep").waitFor();
   check(true, "the world prepared offline is still there after a reload");
 
@@ -547,7 +556,11 @@ try {
   await shot(dana.page, "dana-lan-reply");
   await cabin.page.getByLabel("Player's reply").fill(danaReply);
   await cabin.page.getByRole("button", { name: "Connect" }).click();
-  await eventually(async () => /#\/c\//.test(dana.page.url()) && /At Snowbound/.test(await dana.page.locator(".chip-table").innerText()), "the DM reads the reply and Dana's sheet connects");
+  await eventually(async () => /#\/c\//.test(dana.page.url()) && /At Snowbound/.test(await dana.page.locator(".chip-table").innerText()), "the DM reads the reply and Dana's sheet connects").catch(async (e) => {
+    const lanState = await cabin.page.getByRole("group", { name: "Add a player without internet" }).innerText().catch(() => "(no group)");
+    const lanStatus = await cabin.page.locator("[role=status]").allInnerTexts().catch(() => []);
+    throw new Error(`${e.message}. Dana at ${dana.page.url()}: ${(await dana.page.locator("main").innerText()).slice(0, 300)} | DM: ${lanState.slice(0, 200)} ${lanStatus.join(" / ")}`);
+  });
   await eventually(async () => (await cabin.page.getByRole("article", { name: "Wren Ashdown" }).count()) > 0, "Dana's character joins the DM's party");
   await dana.page.getByRole("button", { name: "Journal" }).click();
   check(/Hollow Keep/.test(await dana.page.getByRole("dialog").innerText()), "and her journal gets the revealed place");

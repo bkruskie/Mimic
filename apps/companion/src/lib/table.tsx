@@ -50,8 +50,8 @@ interface TableState {
   rolls: SharedRoll[];
   /** Handouts the DM has shown to the party. */
   handouts: PublicHandout[];
-  /** Pictures for shown handouts, by image id, as they arrive. */
-  handoutImages: Record<string, string>;
+  /** Pictures for shown handouts and world entries, by image id, as they arrive. */
+  pictures: Record<string, string>;
   /** The fight in progress, as players see it. */
   combat: PublicCombat | null;
   /** This device's identity in the game, from the DM's welcome. */
@@ -82,12 +82,20 @@ type Command = Extract<PlayerMessage, { commandId: string }>;
 export function TableProvider({ children }: { children: ReactNode }) {
   const { vault, toast } = useApp();
   const [handouts, setHandouts] = useState<PublicHandout[]>([]);
-  const [handoutImages, setHandoutImages] = useState<Record<string, string>>({});
+  const [pictures, setPictures] = useState<Record<string, string>>({});
   const [combat, setCombat] = useState<PublicCombat | null>(null);
   const [memberId, setMemberId] = useState<string | null>(null);
   const [map, setMap] = useState<PublicMap | null>(null);
   const [world, setWorld] = useState<PublicWorldEntry[]>([]);
   const knownWorld = useRef<Set<string> | null>(null);
+  // A handout or picture the DM hides again takes the picture with it.
+  useEffect(() => {
+    const used = new Set([...handouts.map((h) => h.imageId), ...world.map((e) => e.imageId)]);
+    setPictures((prev) => {
+      const keep = Object.entries(prev).filter(([id]) => used.has(id));
+      return keep.length === Object.keys(prev).length ? prev : Object.fromEntries(keep);
+    });
+  }, [handouts, world]);
   const [tileStore, setTileStore] = useState<Map<string, string>>(new Map());
   const effectHandler = useRef<((e: Effect) => void) | null>(null);
   const appliedEffects = useRef(new Set<string>());
@@ -206,7 +214,7 @@ export function TableProvider({ children }: { children: ReactNode }) {
           // Keep only tiles of the current versions; older ones show squares that have changed.
           const keep = new Set((m.map?.tiles ?? []).map((t) => `${m.map!.id}:${t.tx}:${t.ty}:${t.version}`));
           setTileStore((prev) => new Map([...prev].filter(([k]) => keep.has(k))));
-        } else if (m.t === "image") setHandoutImages((prev) => ({ ...prev, [m.id]: m.data }));
+        } else if (m.t === "image") setPictures((prev) => ({ ...prev, [m.id]: m.data }));
         else if (m.t === "tile") setTileStore((prev) => new Map(prev).set(`${m.mapId}:${m.tx}:${m.ty}:${m.version}`, m.data));
         else if (m.t === "effect") {
           if (appliedEffects.current.has(m.effectId)) return;
@@ -228,9 +236,6 @@ export function TableProvider({ children }: { children: ReactNode }) {
           const fresh = m.handouts.filter((h) => knownHandouts.current && !knownHandouts.current.has(h.id));
           knownHandouts.current = new Set(m.handouts.map((h) => h.id));
           setHandouts(m.handouts);
-          // A handout hidden again takes its picture with it.
-          const used = new Set(m.handouts.map((h) => h.imageId));
-          setHandoutImages((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => used.has(id))));
           if (fresh.length) toast(fresh.length === 1 ? `New handout: ${fresh[0]!.title}` : `${fresh.length} new handouts`);
         }
         else if (m.t === "ack") outbox.current = outbox.current.filter((c) => c.commandId !== m.commandId);
@@ -256,7 +261,7 @@ export function TableProvider({ children }: { children: ReactNode }) {
       setParty([]);
       setRolls([]);
       setHandouts([]);
-      setHandoutImages({});
+      setPictures({});
       setCombat(null);
       setMap(null);
       setWorld([]);
@@ -297,7 +302,7 @@ export function TableProvider({ children }: { children: ReactNode }) {
     setParty([]);
     setRolls([]);
     setHandouts([]);
-    setHandoutImages({});
+    setPictures({});
     setCombat(null);
     setMap(null);
     setWorld([]);
@@ -342,8 +347,8 @@ export function TableProvider({ children }: { children: ReactNode }) {
   const toggleDoor = useCallback((x: number, y: number) => enqueue({ t: "door", v: PROTOCOL_VERSION, commandId: newId(), x, y }), [enqueue]);
 
   const value = useMemo<TableState>(
-    () => ({ seat, invite, status, problem, party, rolls, handouts, handoutImages, combat, memberId, world, map, mapTiles, moveToken, toggleDoor, join, joinOnNetwork, leave, shareCharacter, shareRoll, setEffectHandler }),
-    [seat, invite, status, problem, party, rolls, handouts, handoutImages, combat, memberId, world, map, mapTiles, moveToken, toggleDoor, join, joinOnNetwork, leave, shareCharacter, shareRoll, setEffectHandler],
+    () => ({ seat, invite, status, problem, party, rolls, handouts, pictures, combat, memberId, world, map, mapTiles, moveToken, toggleDoor, join, joinOnNetwork, leave, shareCharacter, shareRoll, setEffectHandler }),
+    [seat, invite, status, problem, party, rolls, handouts, pictures, combat, memberId, world, map, mapTiles, moveToken, toggleDoor, join, joinOnNetwork, leave, shareCharacter, shareRoll, setEffectHandler],
   );
   return <TableContext.Provider value={value}>{children}</TableContext.Provider>;
 }

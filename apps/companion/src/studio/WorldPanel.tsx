@@ -5,7 +5,8 @@
 import { newId } from "@mimicbox/ruleset-dnd5e";
 import { QUEST_STATUSES, WORLD_KINDS, WORLD_TEXT_MAX, removeWorldEntry, saveWorldEntry, type WorldEntry, type WorldKind } from "@mimicbox/table";
 import { useState } from "react";
-import type { StudioCampaign } from "./store";
+import { PicturePicker, useDraftPictures } from "./pictures";
+import { deleteImage, type StudioCampaign } from "./store";
 
 export const KIND_NAMES: Record<WorldKind, { one: string; many: string }> = {
   place: { one: "Place", many: "Places" },
@@ -22,6 +23,7 @@ export function WorldPanel({ campaign, update }: { campaign: StudioCampaign; upd
   const world = campaign.world ?? [];
   const [draft, setDraft] = useState<Draft | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const pictures = useDraftPictures();
   const depth = (e: WorldEntry): number => {
     let d = 0;
     for (let p = world.find((x) => x.id === e.parentId); p && d < 6; p = world.find((x) => x.id === p!.parentId)) d++;
@@ -38,11 +40,14 @@ export function WorldPanel({ campaign, update }: { campaign: StudioCampaign; upd
   add(null);
   const start = (kind: WorldKind) => {
     setConfirmDelete(false);
-    setDraft({ id: newId(), kind, title: "", parentId: null, revealed: false, blocks: [{ id: newId(), text: "", revealed: false }], questStatus: kind === "quest" ? "active" : null });
+    pictures.discard();
+    setDraft({ id: newId(), kind, title: "", parentId: null, revealed: false, blocks: [{ id: newId(), text: "", revealed: false }], questStatus: kind === "quest" ? "active" : null, image: null });
   };
   const save = () => {
     if (!draft || !draft.title.trim()) return;
+    const previous = world.find((x) => x.id === draft.id)?.image?.id ?? null;
     update((c) => ({ ...c, ...saveWorldEntry(c, draft) }));
+    pictures.kept(draft.image?.id ?? null, previous);
     setDraft(null);
   };
   const patchBlock = (id: string, p: Partial<Draft["blocks"][number]>) => setDraft((d) => d && { ...d, blocks: d.blocks.map((b) => (b.id === id ? { ...b, ...p } : b)) });
@@ -123,12 +128,35 @@ export function WorldPanel({ campaign, update }: { campaign: StudioCampaign; upd
           <button type="button" className="btn btn-quiet" onClick={() => setDraft({ ...draft, blocks: [...draft.blocks, { id: newId(), text: "", revealed: false }] })}>
             Add a paragraph
           </button>
+          <PicturePicker
+            imageId={draft.image?.id ?? null}
+            label={`Picture of ${draft.title || `this ${KIND_NAMES[draft.kind].one.toLowerCase()}`}`}
+            onAdd={(id) => {
+              pictures.add(id);
+              setDraft((d) => d && { ...d, image: { id, revealed: d.image?.revealed ?? false } });
+            }}
+            onRemove={() => setDraft({ ...draft, image: null })}
+          />
+          {draft.image && (
+            <div className="row">
+              <button type="button" className="chip" aria-pressed={draft.image.revealed} aria-label="Picture shown to players" onClick={() => setDraft({ ...draft, image: { ...draft.image!, revealed: !draft.image!.revealed } })}>
+                {draft.image.revealed ? "Picture shown to players" : "Picture only for you"}
+              </button>
+            </div>
+          )}
           {draft.revealed && !draft.blocks.some((b) => b.revealed) && <p className="muted small">Players will see the name only, until you show a paragraph.</p>}
           <div className="row">
             <button className="btn btn-primary" disabled={!draft.title.trim()}>
               Save {KIND_NAMES[draft.kind].one.toLowerCase()}
             </button>
-            <button type="button" className="btn" onClick={() => setDraft(null)}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                pictures.discard();
+                setDraft(null);
+              }}
+            >
               Cancel
             </button>
             {world.some((w) => w.id === draft.id) &&
@@ -137,7 +165,10 @@ export function WorldPanel({ campaign, update }: { campaign: StudioCampaign; upd
                   type="button"
                   className="btn btn-danger"
                   onClick={() => {
+                    const gone = world.find((x) => x.id === draft.id)?.image?.id;
                     update((c) => ({ ...c, ...removeWorldEntry(c, draft.id) }));
+                    pictures.discard();
+                    if (gone) void deleteImage(gone);
                     setDraft(null);
                   }}
                 >
@@ -164,6 +195,7 @@ export function WorldPanel({ campaign, update }: { campaign: StudioCampaign; upd
                     {KIND_NAMES[e.kind].one}
                     {e.questStatus ? `, ${QUEST_NAMES[e.questStatus].toLowerCase()}` : ""}.{" "}
                     {e.revealed ? `Players know it; ${shown} of ${e.blocks.length} paragraph${e.blocks.length === 1 ? "" : "s"} shown.` : "Only you."}
+                    {e.image ? (e.image.revealed && e.revealed ? " Picture shown." : " Picture only for you.") : ""}
                   </span>
                 </span>
                 <button
@@ -171,7 +203,8 @@ export function WorldPanel({ campaign, update }: { campaign: StudioCampaign; upd
                   aria-label={`Edit ${e.title}`}
                   onClick={() => {
                     setConfirmDelete(false);
-                    setDraft({ id: e.id, kind: e.kind, title: e.title, parentId: e.parentId, revealed: e.revealed, blocks: e.blocks, questStatus: e.questStatus });
+                    pictures.discard();
+                    setDraft({ id: e.id, kind: e.kind, title: e.title, parentId: e.parentId, revealed: e.revealed, blocks: e.blocks, questStatus: e.questStatus, image: e.image ?? null });
                   }}
                 >
                   Edit

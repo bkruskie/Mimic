@@ -1438,3 +1438,8 @@ details.feature[open] {
   max-height: 45vh;
   margin: 12px auto;
 }
+/* In the DM's editors, a picture is a preview, not the main thing. */
+.handout-card .handout-image {
+  max-height: 220px;
+  width: auto;
+}

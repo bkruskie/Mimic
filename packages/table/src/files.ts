@@ -106,15 +106,17 @@ export function importCampaign(
       createdAt: typeof h.createdAt === "string" ? h.createdAt : new Date().toISOString(),
       imageId: typeof h.imageId === "string" && h.imageId.length <= 64 ? h.imageId : null,
     }));
-  // Pictures come along only if a handout uses them and they are real images; a handout whose picture is missing keeps its text.
+  // Pictures come along only if a handout or world entry uses them and they are real images; an entry whose
+  // picture is missing keeps its text.
   const images: Record<string, string> = {};
   const fileImages = isRecord(raw.images) ? raw.images : {};
-  for (const h of handouts) {
-    if (!h.imageId) continue;
-    const data = fileImages[h.imageId];
-    if (isImageData(data)) images[h.imageId] = data;
-    else h.imageId = null;
-  }
+  const keepImage = (id: string) => {
+    const data = fileImages[id];
+    if (!isImageData(data)) return false;
+    images[id] = data;
+    return true;
+  };
+  for (const h of handouts) if (h.imageId && !keepImage(h.imageId)) h.imageId = null;
   const maps = (Array.isArray(c.maps) ? c.maps : []).map(readMap).filter((m): m is MapScene => m !== null);
   const tiles: Record<string, Record<string, string>> = {};
   if (isRecord(raw.tiles)) {
@@ -136,6 +138,7 @@ export function importCampaign(
         .filter((b): b is Record<string, unknown> => isRecord(b) && typeof b.id === "string" && typeof b.text === "string")
         .map((b) => ({ id: b.id as string, text: (b.text as string).slice(0, WORLD_TEXT_MAX), revealed: b.revealed === true })),
       questStatus: e.kind === "quest" && (QUEST_STATUSES as readonly unknown[]).includes(e.questStatus) ? (e.questStatus as WorldEntry["questStatus"]) : e.kind === "quest" ? "active" : null,
+      image: isRecord(e.image) && typeof e.image.id === "string" && e.image.id.length <= 64 && keepImage(e.image.id) ? { id: e.image.id, revealed: e.image.revealed === true } : null,
       updatedAt: typeof e.updatedAt === "string" ? e.updatedAt : new Date().toISOString(),
     }));
   const ids = new Set(world.map((e) => e.id));
