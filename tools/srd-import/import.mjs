@@ -495,6 +495,105 @@ for (const c of classes) {
   c.spellList = fromSpells;
 }
 
+
+// ---------- monsters (12_MonstersA-Z.md, 13_Animals.md) ----------
+
+const ABILITY_COLS = ["str", "dex", "con", "int", "wis", "cha"];
+const signed = (t) => Number(String(t).replace(/[−–]/g, "-").replace("+", ""));
+
+/** One stat block: the heading's section with an "Armor Class" line. Entries are "**_Name._** text" paragraphs. */
+function parseMonster(sec, all) {
+  const lines = sec.ownBody.split("\n");
+  const bullet = (label) => {
+    const re = new RegExp(`^- \\*\\*${label}:?\\*\\*:?\\s*(.*)$`);
+    for (const l of lines) {
+      const m = re.exec(l.trim());
+      if (m) return clean(m[1]);
+    }
+    return null;
+  };
+  const kind = /^\*([^*]+)\*$/m.exec(sec.ownBody);
+  const [sizeType, alignment = ""] = kind ? kind[1].split(/,\s*(?=[^,]*$)/) : ["", ""];
+  const sizeWords = ["Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"];
+  const sizeMatch = new RegExp(`^((?:${sizeWords.join("|")})(?: or (?:${sizeWords.join("|")}))?)\\s+(.*)$`).exec(sizeType.trim());
+  const hp = /^(\d+)\s*\(([^)]+)\)/.exec(bullet("Hit Points") ?? "");
+  const init = /^([+−–-]?\d+)\s*\((\d+)\)/.exec(bullet("Initiative") ?? "");
+  const crLine = lines.find((l) => /^- \*\*CR\*\*/.test(l.trim())) ?? "";
+  const cr = /\*\*CR\*\*\s*([\d/]+)\s*\(XP ([\d,]+)(?:, or [\d,]+ in lair)?; PB \+(\d+)\)/.exec(crLine);
+  const abilities = {};
+  const table = tableAfter(sec.ownBody);
+  for (const row of table?.rows ?? []) {
+    const label = (row[0] ?? "").toUpperCase();
+    if (!["SCORE", "MOD", "SAVE"].includes(label)) continue;
+    ABILITY_COLS.forEach((a, i) => {
+      abilities[a] ??= {};
+      abilities[a][label.toLowerCase()] = signed(row[i + 1]);
+    });
+  }
+  const acText = bullet("Armor Class") ?? "";
+  const monster = {
+    id: slug(sec.title),
+    name: sec.title,
+    size: sizeMatch ? sizeMatch[1] : "",
+    type: sizeMatch ? sizeMatch[2] : sizeType.trim(),
+    alignment: alignment.trim(),
+    ac: Number(/^\d+/.exec(acText)?.[0] ?? 10),
+    acNote: acText.replace(/^\d+\s*/, "") || undefined,
+    hp: hp ? { average: Number(hp[1]), formula: hp[2].replace(/\s+/g, " ").trim() } : { average: 1, formula: "1" },
+    speed: bullet("Speed") ?? "",
+    initiative: init ? { bonus: signed(init[1]), score: Number(init[2]) } : { bonus: 0, score: 10 },
+    abilities,
+    skills: bullet("Skills") ?? undefined,
+    vulnerabilities: bullet("Vulnerabilities") ?? undefined,
+    resistances: bullet("Resistances") ?? undefined,
+    immunities: bullet("Immunities") ?? undefined,
+    gear: bullet("Gear") ?? undefined,
+    senses: bullet("Senses") ?? "",
+    languages: bullet("Languages") ?? "",
+    cr: cr ? cr[1] : "0",
+    xp: cr ? Number(cr[2].replace(/,/g, "")) : 0,
+    pb: cr ? Number(cr[3]) : 2,
+    sections: [],
+  };
+  for (const sub of all.filter((x) => x.depth === sec.depth + 1 && x.line > sec.line && x.line < sec.end)) {
+    const entries = [];
+    let intro = "";
+    for (const para of sub.ownBody.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean)) {
+      const m = /^\*\*_?([^*_]+?)\.?_?\*\*\s*([\s\S]*)$/.exec(para);
+      if (m && !para.startsWith("- ")) entries.push({ name: m[1].replace(/\.$/, "").trim(), text: m[2].trim() });
+      else if (entries.length) entries[entries.length - 1].text += `\n\n${para}`;
+      else intro += (intro ? "\n\n" : "") + para;
+    }
+    monster.sections.push({ title: sub.title, ...(intro ? { intro } : {}), entries });
+  }
+  return monster;
+}
+
+function parseMonsters(file) {
+  const all = sections(read(file));
+  // Each section's end line, so sub-headings can be matched to their stat block.
+  const lines = read(file).split("\n").length;
+  all.forEach((h, i) => {
+    h.end = lines;
+    for (let j = i + 1; j < all.length; j++) {
+      if (all[j].depth <= h.depth) {
+        h.end = all[j].line;
+        break;
+      }
+    }
+  });
+  return all.filter((x) => /\*\*Armor Class:?\*\*/.test(x.ownBody)).map((x) => parseMonster(x, all));
+}
+
+const monsters = [...parseMonsters("12_MonstersA-Z.md"), ...parseMonsters("13_Animals.md")].sort((a, b) => a.name.localeCompare(b.name));
+const monsterIds = new Set();
+for (const m of monsters) {
+  if (monsterIds.has(m.id)) console.warn(`Two monsters share the id ${m.id}`);
+  monsterIds.add(m.id);
+  if (Object.keys(m.abilities).length !== 6) console.warn(`${m.name}: ability table not read`);
+  if (!m.sections.length) console.warn(`${m.name}: no actions read`);
+}
+
 const legal = read("00_Legal.md");
 const attribution = /^> (.+)$/m.exec(legal)[1];
 const pack = {
@@ -520,9 +619,10 @@ write("armor.json", equipment.armor);
 write("gear.json", equipment.gear);
 write("rules-text.json", { mastery: equipment.mastery, properties: equipment.properties });
 write("spells.json", spells);
+write("monsters.json", monsters);
 
 console.log(
   `SRD 5.2.1 pack written to ${OUT}: ${classes.length} classes, ${origins.species.length} species, ` +
     `${origins.backgrounds.length} backgrounds, ${feats.length} feats, ${equipment.weapons.length} weapons, ` +
-    `${equipment.armor.length} armor, ${equipment.gear.length} gear and tools, ${spells.length} spells.`,
+    `${equipment.armor.length} armor, ${equipment.gear.length} gear and tools, ${spells.length} spells, ${monsters.length} monsters.`,
 );

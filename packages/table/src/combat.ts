@@ -17,6 +17,9 @@ export interface Combatant {
   hp: { current: number; max: number } | null;
   /** The creature's token on the map, when it has one. Player characters use their own token. */
   tokenId?: string | null;
+  /** The SRD monster it was added from, for its stat block. DM-only, like its AC. */
+  monsterId?: string | null;
+  ac?: number | null;
 }
 
 export interface Combat {
