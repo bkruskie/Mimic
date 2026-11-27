@@ -4,6 +4,7 @@
  */
 import { newId, srdContent as content } from "@mimicbox/ruleset-dnd5e";
 import {
+  logChanges,
   PROTOCOL_VERSION,
   activeMap,
   displayChannelName,
@@ -133,7 +134,9 @@ export function useHost(initial: StudioCampaign) {
 
   /** Every change to the campaign goes through here: kept in a ref for message handlers, saved shortly after. */
   const setCampaign = useCallback(
-    (next: StudioCampaign, announce = true) => {
+    (changed: StudioCampaign, announce = true) => {
+      // While a session runs, what players would notice is written to its log.
+      const next = logChanges(ref.current, changed, new Date().toISOString()) as StudioCampaign;
       ref.current = next;
       setCampaignState(next);
       window.clearTimeout(saveTimer.current);

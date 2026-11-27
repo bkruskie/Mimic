@@ -15,7 +15,25 @@
   --tongue-deep: #b2304f;
   --moss: #7fa66b;
   --warn: #e0a03a;
+  /* DM-only things wear the violet veil. */
+  --veil: #9b7fd1;
+  --veil-text: #d8cbf5;
+  --on-accent: #fff;
+  /* A handout is a sheet of paper on either theme. */
+  --paper: #efe4d2;
+  --ink: #241a26;
+  --scrim: rgba(15, 10, 16, 0.7);
+  --shadow: rgba(0, 0, 0, 0.4);
+  /* Texture: a fine grain on every surface, like the inside of a worn chest, and a faint lamp glow from above. */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.94 0 0 0 0 0.89 0 0 0 0 0.82 0.26 0 0 0 -0.08'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  --glow: radial-gradient(ellipse 120% 60% at 50% -10%, rgba(201, 151, 63, 0.09), transparent 70%);
+  --lacquer: inset 0 1px 0 rgba(239, 228, 210, 0.06);
+  --meta-theme: #241a26;
+  color-scheme: dark;
 
+}
+
+:root {
   --font-display: "Fraunces Variable", "Iowan Old Style", Georgia, serif;
   --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
 
@@ -35,7 +53,37 @@
   --tabbar: 64px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 
-  color-scheme: dark;
+}
+
+/*
+ * Parchment: the light theme, for bright rooms and projectors. The same chest, lid open in daylight: vellum
+ * surfaces, ink text, darker brass so numbers stay readable on a light page.
+ */
+:root[data-theme="light"] {
+  --hollow: #e9dfcb;
+  --lid: #f6efe1;
+  --lid-raised: #fffaf0;
+  --seam: #d3c3a6;
+  --bone: #2b2129;
+  --bone-dim: #625259;
+  --brass: #87590f;
+  --brass-bright: #74490a;
+  --tongue: #b8324f;
+  --tongue-deep: #922640;
+  --moss: #4a7638;
+  --warn: #935500;
+  --veil: #6c4cb0;
+  --veil-text: #4d338c;
+  --on-accent: #fff;
+  --paper: #fffaf0;
+  --ink: #2b2129;
+  --scrim: rgba(43, 33, 41, 0.45);
+  --shadow: rgba(70, 48, 20, 0.2);
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.24 0 0 0 0 0.12 0.34 0 0 0 -0.1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  --glow: radial-gradient(ellipse 120% 60% at 50% -10%, rgba(255, 250, 235, 0.7), transparent 70%);
+  --lacquer: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --meta-theme: #e9dfcb;
+  color-scheme: light;
 }
 
 * {
@@ -150,7 +198,7 @@ a {
   padding: 10px 16px;
   border-radius: var(--r-md);
   border: 1px solid var(--seam);
-  background: var(--lid-raised);
+  background: var(--grain) var(--lid-raised);
   font-weight: 700;
 }
 .btn:hover {
@@ -159,7 +207,7 @@ a {
 .btn-primary {
   background: var(--tongue);
   border-color: var(--tongue);
-  color: #fff;
+  color: var(--on-accent);
 }
 .btn-primary:hover {
   background: var(--tongue-deep);
@@ -205,7 +253,7 @@ textarea.input {
 }
 
 .panel {
-  background: var(--lid);
+  background: var(--grain) var(--lid);
   border-radius: var(--r-md);
   padding: var(--pad);
 }
@@ -235,13 +283,13 @@ textarea.input {
 .notice {
   border-left: 3px solid var(--warn);
   padding: 8px 12px;
-  background: rgba(224, 160, 58, 0.1);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
   border-radius: 0 var(--r-sm) var(--r-sm) 0;
   font-size: var(--t-sm);
 }
 .notice-todo {
   border-left-color: var(--brass);
-  background: rgba(201, 151, 63, 0.1);
+  background: color-mix(in srgb, var(--brass) 10%, transparent);
 }
 
 /* ---------- vault ---------- */
@@ -271,7 +319,7 @@ textarea.input {
   padding: 14px 16px;
   border-radius: var(--r-md);
   border: 1px solid transparent;
-  background: var(--lid);
+  background: var(--grain) var(--lid);
 }
 .vault-card:hover {
   border-color: var(--seam);
@@ -286,7 +334,7 @@ textarea.input {
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: var(--lid-raised);
+  background: var(--grain) var(--lid-raised);
   display: grid;
   place-items: center;
   font-family: var(--font-display);
@@ -334,7 +382,7 @@ textarea.input {
   align-items: stretch;
 }
 .vital {
-  background: var(--lid);
+  background: var(--grain) var(--lid);
   border-radius: var(--r-md);
   padding: 6px 10px;
   text-align: center;
@@ -396,7 +444,7 @@ button.vital:hover {
   z-index: 20;
   height: calc(var(--tabbar) + var(--safe-bottom));
   padding-bottom: var(--safe-bottom);
-  background: var(--lid);
+  background: var(--grain) var(--lid);
   border-top: 1px solid var(--seam);
   display: grid;
   grid-auto-flow: column;
@@ -431,10 +479,10 @@ button.vital:hover {
   border-radius: 18px;
   border: 0;
   background: var(--tongue);
-  color: #fff;
+  color: var(--on-accent);
   display: grid;
   place-items: center;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 6px 20px var(--shadow);
 }
 .die-fab svg {
   width: 30px;
@@ -460,7 +508,7 @@ button.vital:hover {
   }
 }
 .ability {
-  background: var(--lid);
+  background: var(--grain) var(--lid);
   border-radius: var(--r-md);
   padding: 10px 6px 8px;
   text-align: center;
@@ -491,7 +539,7 @@ button.vital:hover {
   list-style: none;
   padding: 0;
   margin: 0;
-  background: var(--lid);
+  background: var(--grain) var(--lid);
   border-radius: var(--r-md);
   overflow: hidden;
 }
@@ -510,7 +558,7 @@ button.vital:hover {
   text-align: left;
 }
 .roll-row:hover {
-  background: var(--lid-raised);
+  background: var(--grain) var(--lid-raised);
 }
 .roll-row .grow {
   flex: 1;
@@ -625,7 +673,7 @@ button.vital:hover {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: rgba(15, 10, 16, 0.7);
+  background: var(--scrim);
   display: grid;
   align-items: end;
   justify-items: center;
@@ -640,7 +688,7 @@ button.vital:hover {
   max-width: 620px;
   max-height: 88vh;
   overflow: auto;
-  background: var(--lid);
+  background: var(--grain) var(--lid);
   border-radius: var(--r-lg) var(--r-lg) 0 0;
   padding: 18px var(--pad) calc(18px + var(--safe-bottom));
   animation: rise 180ms ease-out;
@@ -795,7 +843,7 @@ button.vital:hover {
 }
 
 details.feature {
-  background: var(--lid);
+  background: var(--grain) var(--lid);
   border-radius: var(--r-md);
   padding: 0 14px;
 }
@@ -859,7 +907,7 @@ details.feature[open] {
   padding: 12px;
   border-radius: var(--r-md);
   border: 1px solid var(--seam);
-  background: var(--lid);
+  background: var(--grain) var(--lid);
   min-height: 64px;
 }
 .choice[aria-pressed="true"] {
@@ -894,7 +942,7 @@ details.feature[open] {
   right: 0;
   bottom: 0;
   z-index: 20;
-  background: var(--lid);
+  background: var(--grain) var(--lid);
   border-top: 1px solid var(--seam);
   padding: 10px var(--pad) calc(10px + var(--safe-bottom));
 }
@@ -1156,7 +1204,7 @@ details.feature[open] {
   align-content: start;
 }
 .display-card {
-  background: var(--lid);
+  background: var(--grain) var(--lid);
   border-radius: var(--r-lg);
   padding: 18px 20px;
 }
@@ -1183,7 +1231,7 @@ details.feature[open] {
   color: var(--tongue);
 }
 .display-latest {
-  background: var(--lid);
+  background: var(--grain) var(--lid);
   border-radius: var(--r-lg);
   padding: 20px;
   display: grid;
@@ -1224,15 +1272,16 @@ details.feature[open] {
   font-size: clamp(14px, 1.1vw, 18px);
 }
 .display-handout {
-  background: var(--bone);
-  color: var(--hollow);
+  background: var(--grain) var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--seam);
   border-radius: var(--r-lg);
   padding: clamp(16px, 2vw, 28px);
   margin-bottom: 20px;
   font-size: clamp(16px, 1.3vw, 22px);
 }
 .display-handout h2 {
-  color: var(--hollow);
+  color: var(--ink);
   font-size: clamp(22px, 2vw, 34px);
   margin-bottom: 8px;
 }
@@ -1296,7 +1345,7 @@ details.feature[open] {
   gap: 10px;
 }
 .display-combat .initiative li {
-  background: var(--lid);
+  background: var(--grain) var(--lid);
   font-size: clamp(18px, 1.6vw, 28px);
   padding: 10px 18px;
 }
@@ -1338,6 +1387,20 @@ details.feature[open] {
 .map-overlay .fog {
   fill: rgba(18, 13, 20, 0.62);
 }
+/* A dark map: squares the party can't see right now. What they saw before shows through, dimmed. */
+.map-overlay .darkness {
+  fill: rgba(8, 5, 12, 0.58);
+}
+.map-overlay .light-reach {
+  fill: rgba(240, 180, 80, 0.08);
+  stroke: rgba(240, 180, 80, 0.75);
+  stroke-dasharray: 6 6;
+}
+.map-overlay .light-flame {
+  fill: #f0b450;
+  stroke: #241a26;
+  stroke-width: 2;
+}
 .map-overlay .paint-reveal {
   fill: rgba(127, 166, 107, 0.45);
 }
@@ -1347,8 +1410,9 @@ details.feature[open] {
 .token {
   position: absolute;
   border-radius: 50%;
-  border: 2px solid var(--bone);
-  color: var(--hollow);
+  /* Map art looks the same on either theme. */
+  border: 2px solid #efe4d2;
+  color: #241a26;
   font-family: var(--font-display);
   font-weight: 700;
   display: grid;
@@ -1453,7 +1517,7 @@ details.feature[open] {
   max-width: 180px;
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgba(36, 26, 38, 0.92);
+  background: color-mix(in srgb, var(--hollow) 92%, transparent);
   color: var(--bone);
   border: 1px solid var(--brass);
   white-space: nowrap;
@@ -1463,8 +1527,8 @@ details.feature[open] {
   z-index: 2;
 }
 .map-surface .pin.dm {
-  border: 1px dashed #9b7fd1;
-  color: #d8cbf5;
+  border: 1px dashed var(--veil);
+  color: var(--veil-text);
 }
 
 .die-fab.no-tabs {
@@ -1486,7 +1550,7 @@ details.feature[open] {
   gap: 8px;
   padding: 6px 10px;
   border-bottom: 1px solid var(--seam);
-  background: var(--lid);
+  background: var(--grain) var(--lid);
   min-height: 52px;
   flex-wrap: nowrap;
   overflow-x: auto;
@@ -1643,7 +1707,7 @@ details.feature[open] {
   align-items: center;
   gap: 10px;
   padding: 6px 12px;
-  background: var(--lid);
+  background: var(--grain) var(--lid);
   border-bottom: 1px solid var(--seam);
   flex-wrap: wrap;
 }
@@ -1780,9 +1844,9 @@ details.feature[open] {
   min-width: 160px;
   padding: 6px;
   border-radius: var(--r-md);
-  background: var(--lid-raised);
+  background: var(--grain) var(--lid-raised);
   border: 1px solid var(--seam);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 8px 24px var(--shadow);
 }
 .menu-list .btn {
   justify-content: flex-start;
@@ -1791,9 +1855,9 @@ details.feature[open] {
 /* ---------- world pages (DM and player) ---------- */
 /* Secrets look secret everywhere: the dashed violet "only you" outline (docs/design.md). */
 .veil {
-  outline: 1px dashed #9b7fd1;
+  outline: 1px dashed var(--veil);
   outline-offset: 4px;
-  background: rgba(155, 127, 209, 0.07);
+  background: color-mix(in srgb, var(--veil) 7%, transparent);
   border-radius: var(--r-md);
 }
 .world {
@@ -1841,12 +1905,12 @@ details.feature[open] {
   min-height: 40px;
 }
 .world-item:hover {
-  background: var(--lid);
+  background: var(--grain) var(--lid);
 }
 .world-item.secret {
   font-style: italic;
   color: var(--bone-dim);
-  text-decoration: underline dashed #9b7fd1;
+  text-decoration: underline dashed var(--veil);
   text-underline-offset: 4px;
 }
 .world-item[aria-current="page"] {
@@ -1875,7 +1939,7 @@ details.feature[open] {
   position: absolute;
   right: 10px;
   bottom: 10px;
-  background: rgba(36, 26, 38, 0.9);
+  background: color-mix(in srgb, var(--hollow) 90%, transparent);
 }
 .entry-head {
   display: flex;
@@ -1926,7 +1990,7 @@ details.feature[open] {
   color: var(--moss);
 }
 .entry-block.veil .entry-eye {
-  color: #c3aef0;
+  color: var(--veil-text);
 }
 .entry-aside h3 {
   margin: 0 0 6px;
@@ -1952,7 +2016,7 @@ details.feature[open] {
 .wiki-link.secret {
   font-style: italic;
   text-decoration-style: dashed;
-  text-decoration-color: #9b7fd1;
+  text-decoration-color: var(--veil);
 }
 .wiki-missing {
   text-decoration: underline dotted var(--bone-dim);
@@ -2049,7 +2113,7 @@ details.feature[open] {
   padding: 8px 10px;
   border-radius: var(--r-md);
   background: var(--hollow);
-  border: 1px dashed #9b7fd1;
+  border: 1px dashed var(--veil);
 }
 
 .dm-initiative .wiki-link {
@@ -2061,4 +2125,192 @@ details.feature[open] {
 }
 .table-panel .dm-initiative li {
   padding: 8px 10px;
+}
+
+/* Sessions: the running log in Play, and recaps in Prepare. */
+.link-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--brass-bright);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.session-play h2 .muted {
+  font-family: var(--font-body);
+  font-weight: normal;
+  margin-left: 6px;
+}
+.session-log {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  font-size: var(--t-sm);
+}
+.session-log li {
+  display: grid;
+  grid-template-columns: 4.5em 1fr;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--seam);
+}
+.session-log li:last-child {
+  border-bottom: 0;
+}
+.session-log time {
+  color: var(--bone-dim);
+  font-variant-numeric: tabular-nums;
+}
+.session-log .log-defeat span,
+.session-log .log-crit span {
+  color: var(--brass-bright);
+}
+.session-log .log-fumble span {
+  color: var(--tongue);
+}
+.session-log .log-session span {
+  color: var(--bone-dim);
+  font-style: italic;
+}
+.session-note {
+  flex-wrap: nowrap;
+}
+.session-note .input {
+  flex: 1;
+  min-width: 0;
+}
+.session-card {
+  margin-top: 10px;
+  padding: 0;
+}
+.session-head {
+  width: 100%;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 12px var(--pad);
+  cursor: pointer;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.session-head .muted {
+  flex: 1;
+}
+.session-body {
+  padding: 0 var(--pad) var(--pad);
+  display: grid;
+  gap: 10px;
+}
+.session-body summary {
+  cursor: pointer;
+}
+
+/* Scenes: the DM's plan in Prepare, and the scene being played. */
+.scene-list {
+  counter-reset: none;
+  padding: 0;
+}
+.scene-list li {
+  gap: 12px;
+}
+.scene-number {
+  font-family: var(--font-display);
+  font-size: var(--t-lg);
+  color: var(--brass);
+  min-width: 1.4em;
+  text-align: right;
+}
+.scene-summary {
+  flex: 1;
+  min-width: 0;
+}
+.scene-done .scene-summary,
+.scene-done .scene-number {
+  opacity: 0.6;
+}
+.scene-actions {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.scene-picks {
+  border: 1px solid var(--seam);
+  border-radius: var(--r-sm);
+  padding: 8px 12px;
+  margin: 0;
+}
+.scene-picks legend {
+  padding: 0 4px;
+}
+.scene-pick-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 4px 16px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.scene-pick-list label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+}
+.scene-notes {
+  border-left: 3px dashed var(--veil);
+  padding-left: 12px;
+  margin: 8px 0;
+}
+
+/* The page itself: grain over the hollow, lit from above. On html, so it fills the window however short the
+   page; fixed, so it doesn't swim as you scroll. */
+html {
+  background: var(--grain), var(--glow), var(--hollow);
+  background-attachment: fixed;
+}
+body,
+#root {
+  background: transparent;
+}
+.panel,
+.section.panel,
+.vault-card {
+  box-shadow: var(--lacquer);
+}
+
+/* Theme choice: dark, light or the device's own setting. */
+.theme-picker {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--grain) var(--lid);
+  border: 1px solid var(--seam);
+}
+.theme-picker button {
+  border: 0;
+  background: none;
+  border-radius: 999px;
+  padding: 6px 14px;
+  min-height: 36px;
+  color: var(--bone-dim);
+}
+.theme-picker button[aria-pressed="true"] {
+  background: var(--brass);
+  color: var(--hollow);
+}
+.theme-row {
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+}
+.input.input-small {
+  width: auto;
+  min-height: 36px;
+  padding: 4px 8px;
+  font-size: var(--t-sm);
 }

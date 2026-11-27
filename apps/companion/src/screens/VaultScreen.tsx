@@ -1,3 +1,4 @@
+import { ThemePicker } from "../components/ThemePicker";
 import { exportVaultBackup, importVaultBackup, newId, type Character } from "@mimicbox/ruleset-dnd5e";
 import { downloadJson } from "../lib/download";
 import { useRef, useState } from "react";
@@ -144,6 +145,10 @@ export function VaultScreen() {
         )}
       </div>
 
+      <div className="row theme-row">
+        <span className="muted small">Theme on this device</span>
+        <ThemePicker />
+      </div>
       <footer className="footer-note stack">
         {storage && !storage.persisted && (
           <p>

@@ -31,6 +31,14 @@ In a fight, the DM adds monsters from the SRD's bestiary (330 stat blocks): seve
 
 Encounters can be prepared ahead ("Docks ambush: 4 goblins and a hidden boss, on the docks map") and run in one tap: the map goes up, the fight starts and every creature is placed.
 
+Maps can be dark: the party sees only what light reaches, from lights the DM places and torches or lanterns their tokens carry, plus what a character's darkvision shows (taken from their sheet). What they saw before stays on their map, dimmed, and creatures standing in the dark are never sent to them.
+
+Dark by default, with a light Parchment theme for bright rooms and projectors. Each device picks its own (or follows the device setting), and a table display opened from the studio follows the DM's choice.
+
+Plan the game as scenes, in order. Each holds the DM's notes, the map to show, the fight to run, and the handouts and world pages to reveal. In Play, the scene being played shows all of it with one tap each, and Next scene moves on and shows the next map.
+
+Start a session when the game begins and the studio keeps a log of what the party saw: fights, creatures falling, handouts and world pages revealed, the map changing, players joining and public rolls, plus notes the DM adds. Secret rolls and hidden creatures never reach it. When the session ends, the log becomes a recap draft to edit and share with the players as a handout.
+
 The DM's studio has two modes. Prepare holds the world, maps, handouts, players and backups, one tab at a time. Play puts the map in play in the middle with the turn order, handouts to show, the party and the dice beside it.
 
 ## Run it
