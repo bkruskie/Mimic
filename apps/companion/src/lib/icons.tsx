@@ -68,3 +68,14 @@ export const PanelIcon = (p: SVGProps<SVGSVGElement>) => (
     <path d="M14.5 4.5v15" />
   </svg>
 );
+export const EyeIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+export const EyeOffIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <path d="M3 3l18 18M10.6 5.6A10 10 0 0 1 12 5.5c6.4 0 10 6.5 10 6.5a17 17 0 0 1-3.2 3.9M6.1 6.6A17 17 0 0 0 2 12s3.6 6.5 10 6.5a9.6 9.6 0 0 0 4-.9" />
+  </svg>
+);

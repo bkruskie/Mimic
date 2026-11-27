@@ -6,7 +6,9 @@ import { formatModifier } from "@mimicbox/dice";
 import type { DerivedSheet } from "@mimicbox/ruleset-dnd5e";
 import { go } from "../App";
 import { Drawer } from "../components/Drawer";
-import { Markdown } from "../lib/markdown";
+import { findByTitle, mentionsOf, trail, type PublicWorldEntry } from "@mimicbox/table";
+import { useState } from "react";
+import { Markdown, type WikiLink } from "../lib/markdown";
 import { useTable } from "../lib/table";
 
 export function tableStatusText(status: ReturnType<typeof useTable>["status"], campaign: string): string {
@@ -170,7 +172,9 @@ const JOURNAL_GROUPS = [
 /** What the party has learned of the DM's world. */
 export function JournalPanel() {
   const table = useTable();
-  const byId = new Map(table.world.map((e) => [e.id, e]));
+  const [open, setOpen] = useState<string | null>(null);
+  const current = table.world.find((e) => e.id === open) ?? null;
+  if (current) return <JournalPage entry={current} onOpen={setOpen} />;
   return (
     <>
       <p className="muted small" style={{ marginTop: 0 }}>
@@ -180,23 +184,83 @@ export function JournalPanel() {
         const entries = table.world.filter((e) => e.kind === kind);
         if (!entries.length) return null;
         return (
-          <section key={kind} aria-label={heading}>
-            <h3 style={{ marginTop: 14 }}>{heading}</h3>
-            {entries.map((e) => (
-              <details key={e.id} className="feature">
-                <summary>
-                  <span className="grow">{e.title}</span>
-                  {e.questStatus && e.questStatus !== "active" && <span className="small muted">{e.questStatus === "done" ? "Done" : "Failed"}</span>}
-                </summary>
-                {e.parentId && byId.get(e.parentId) && <p className="muted small">In {byId.get(e.parentId)!.title}</p>}
-                {e.imageId && table.pictures[e.imageId] && <img className="handout-image" src={table.pictures[e.imageId]} alt={e.title} />}
-                {e.paragraphs.length ? e.paragraphs.map((p, i) => <Markdown key={i} text={p} />) : !e.imageId && <p className="muted small">Nothing more is known yet.</p>}
-              </details>
-            ))}
+          <section key={kind} aria-label={heading} className="world-group">
+            <h3>{heading}</h3>
+            <ul>
+              {entries.map((e) => (
+                <li key={e.id}>
+                  <button className="world-item" onClick={() => setOpen(e.id)}>
+                    {e.title}
+                    {e.questStatus && e.questStatus !== "active" && <span className="muted small">{e.questStatus === "done" ? ", done" : ", failed"}</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
           </section>
         );
       })}
     </>
+  );
+}
+
+/** One journal entry as a page: where it is, its picture, what's known, and links to what the party also knows. */
+function JournalPage({ entry, onOpen }: { entry: PublicWorldEntry; onOpen: (id: string | null) => void }) {
+  const table = useTable();
+  const world = table.world;
+  const path = trail(world, entry.id);
+  const inside = world.filter((e) => e.parentId === entry.id);
+  const mentioned = mentionsOf(world, entry.id, (e) => e.paragraphs);
+  const go = (id: string, name: string, key?: string) => (
+    <button key={key} type="button" className="wiki-link" onClick={() => onOpen(id)}>
+      {name}
+    </button>
+  );
+  // Links to entries the party hasn't learned about stay plain text.
+  const link: WikiLink = (name, key) => {
+    const target = findByTitle(world, name);
+    return target ? go(target.id, name, key) : null;
+  };
+  return (
+    <article className="entry-page journal-page" aria-label={entry.title}>
+      <button className="btn btn-quiet" onClick={() => onOpen(null)}>
+        All entries
+      </button>
+      {path.length > 0 && (
+        <p className="entry-trail">
+          In{" "}
+          {path.map((p, i) => (
+            <span key={p.id}>
+              {i > 0 && <span aria-hidden="true"> / </span>}
+              {go(p.id, p.title)}
+            </span>
+          ))}
+        </p>
+      )}
+      {entry.imageId && table.pictures[entry.imageId] && <img className="handout-image entry-hero" src={table.pictures[entry.imageId]} alt={entry.title} />}
+      <h3 className="journal-title">{entry.title}</h3>
+      {entry.questStatus && <p className="muted small">Quest, {entry.questStatus === "active" ? "active" : entry.questStatus === "done" ? "done" : "failed"}</p>}
+      {entry.paragraphs.length ? entry.paragraphs.map((p, i) => <Markdown key={i} text={p} link={link} />) : <p className="muted small">Nothing more is known yet.</p>}
+      {inside.length > 0 && (
+        <>
+          <h4>In {entry.title}</h4>
+          <p className="row" style={{ gap: 8 }}>
+            {inside.map((e) => (
+              <span key={e.id}>{go(e.id, e.title)}</span>
+            ))}
+          </p>
+        </>
+      )}
+      {mentioned.length > 0 && (
+        <>
+          <h4>Mentioned in</h4>
+          <p className="row" style={{ gap: 8 }}>
+            {mentioned.map((e) => (
+              <span key={e.id}>{go(e.id, e.title)}</span>
+            ))}
+          </p>
+        </>
+      )}
+    </article>
   );
 }
 

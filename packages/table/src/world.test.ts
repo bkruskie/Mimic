@@ -1,6 +1,6 @@
 import { srdContent as content } from "@mimicbox/ruleset-dnd5e";
 import { describe, expect, it } from "vitest";
-import { campaignImageIds, createCampaign, exportCampaign, importCampaign, playerView, publicWorld, removeWorldEntry, saveWorldEntry, sharedImageIds, type HostCampaign } from "./index.js";
+import { campaignImageIds, findByTitle, linkNames, mentionsOf, setBlockRevealed, setEntryRevealed, setPictureRevealed, trail, createCampaign, exportCampaign, importCampaign, playerView, publicWorld, removeWorldEntry, saveWorldEntry, sharedImageIds, type HostCampaign } from "./index.js";
 
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
@@ -70,5 +70,28 @@ describe("world notes", () => {
     expect(back.images).toEqual({ "img-mara": PNG });
     expect(back.campaign.world!.find((e) => e.id === "mara")!.image).toEqual({ id: "img-mara", revealed: true });
     expect(back.campaign.world!.find((e) => e.id === "vault")!.image).toBeNull();
+  });
+});
+
+describe("world pages", () => {
+  it("find links, trails and mentions", () => {
+    let c = world();
+    const port = c.world!.find((e) => e.id === "port")!;
+    c = saveWorldEntry(c, { ...port, blocks: [...port.blocks, { id: "b9", text: "Ask [[mara the ferrywoman]] or [[Nobody]]. [[Mara the Ferrywoman]] again.", revealed: true }] });
+    expect(linkNames(c.world!.find((e) => e.id === "port")!.blocks[1]!.text)).toEqual(["mara the ferrywoman", "Nobody"]);
+    expect(findByTitle(c.world!, " MARA THE FERRYWOMAN ")?.id).toBe("mara");
+    expect(findByTitle(c.world!, "Nobody")).toBeNull();
+    expect(trail(c.world!, "mara").map((e) => e.title)).toEqual(["Port Ashen", "The Drowned Vault"]);
+    expect(mentionsOf(c.world!, "mara", (e) => e.blocks.map((b) => b.text)).map((e) => e.id)).toEqual(["port"]);
+  });
+
+  it("reveal entries, paragraphs and pictures one at a time", () => {
+    let c = saveWorldEntry(world(), { ...world().world!.find((e) => e.id === "mara")!, image: { id: "img", revealed: false } });
+    c = setBlockRevealed(c, "mara", "b4", true);
+    expect(publicWorld(c).find((e) => e.id === "mara")!.paragraphs).toContain("Secretly serves the drowned god.");
+    c = setPictureRevealed(c, "mara", true);
+    expect(publicWorld(c).find((e) => e.id === "mara")!.imageId).toBe("img");
+    c = setEntryRevealed(c, "mara", false);
+    expect(publicWorld(c).some((e) => e.id === "mara")).toBe(false);
   });
 });
