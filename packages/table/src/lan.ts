@@ -12,6 +12,7 @@ export const LAN_HOST = "lan-host";
 export const FRAME_SIZE = 16000;
 const MAX_MESSAGE = 8_000_000;
 const GATHER_TIMEOUT_MS = 4000;
+const GATHER_MAX_MS = 15000;
 
 export interface LanOffer {
   k: "offer";
@@ -187,19 +188,20 @@ function framedPeer(pc: RTCPeerConnection, channel: Promise<RTCDataChannel>): La
   };
 }
 
-/** Waits until the browser has listed its network addresses, so the description is complete without trickling. */
+/**
+ * Waits until the browser has listed its network addresses, so the description is complete without trickling.
+ * Usually that takes well under a second. After a few seconds a description with at least one address is good
+ * enough; one with none could never connect, so that waits longer.
+ */
 async function gathered(pc: RTCPeerConnection): Promise<string> {
-  if (pc.iceGatheringState !== "complete") {
-    await new Promise<void>((resolve) => {
-      const t = setTimeout(resolve, GATHER_TIMEOUT_MS);
-      pc.addEventListener("icegatheringstatechange", () => {
-        if (pc.iceGatheringState === "complete") {
-          clearTimeout(t);
-          resolve();
-        }
-      });
-    });
+  const hasAddress = () => /\r?\na=candidate:/.test(pc.localDescription?.sdp ?? "");
+  const started = Date.now();
+  while (pc.iceGatheringState !== "complete") {
+    const waited = Date.now() - started;
+    if ((waited >= GATHER_TIMEOUT_MS && hasAddress()) || waited >= GATHER_MAX_MS) break;
+    await new Promise((r) => setTimeout(r, 100));
   }
+  if (!hasAddress()) throw new LanCodeError("This device found no network to connect over. Turn on Wi-Fi, join the DM's network, then try again.");
   return pc.localDescription!.sdp;
 }
 

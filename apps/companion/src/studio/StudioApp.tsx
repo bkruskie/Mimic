@@ -19,6 +19,8 @@ import {
   type Combat,
   type Effect,
   createCampaign,
+  LanCodeError,
+  campaignImageIds,
   exportCampaign,
   importCampaign,
   randomSecret,
@@ -39,6 +41,7 @@ import { QrCode, QrScanner } from "../components/qr";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BackIcon } from "../lib/icons";
 import { scaleHandoutImage } from "../lib/mapImages";
+import { StoredImage } from "./pictures";
 import { deleteCampaign, deleteImage, getCampaign, listCampaigns, loadImage, loadTiles, relaysFromAddress, saveCampaign, saveImage, saveTiles, type StudioCampaign } from "./store";
 import { MapsPanel } from "./MapsPanel";
 import { WorldPanel } from "./WorldPanel";
@@ -327,9 +330,9 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
                   const tiles: Record<string, Record<string, string>> = {};
                   for (const m of campaign.maps ?? []) tiles[m.id] = Object.fromEntries(await loadTiles(m.id));
                   const images: Record<string, string> = {};
-                  for (const h of campaign.handouts ?? []) {
-                    const data = h.imageId ? await loadImage(h.imageId) : undefined;
-                    if (h.imageId && data) images[h.imageId] = data;
+                  for (const id of campaignImageIds(campaign)) {
+                    const data = await loadImage(id);
+                    if (data) images[id] = data;
                   }
                   downloadJson(exportCampaign(campaign, tiles, images), `${fileSafe(campaign.name, "campaign")}.mimicbox-campaign`);
                 }}
@@ -417,9 +420,9 @@ function LanInvite({
               const s = await start();
               cancelRef.current = s.cancel;
               setStep({ at: "code", ...s, scanning: false, reply: "", busy: false });
-            } catch {
+            } catch (e) {
               setStep({ at: "idle" });
-              setError("This browser couldn't make a code. Try again, or use the invite link instead.");
+              setError(e instanceof LanCodeError ? e.message : "This browser couldn't make a code. Try again, or use the invite link instead.");
             }
           }}
         >
@@ -836,19 +839,6 @@ function Handouts({
       )}
     </section>
   );
-}
-
-/** A picture kept on this device, such as a handout's. */
-function StoredImage({ id, alt }: { id: string; alt: string }) {
-  const [src, setSrc] = useState<string | null>(null);
-  useEffect(() => {
-    let live = true;
-    loadImage(id).then((d) => live && setSrc(d ?? null), () => live && setSrc(null));
-    return () => {
-      live = false;
-    };
-  }, [id]);
-  return src ? <img className="handout-image" src={src} alt={alt} /> : null;
 }
 
 function CombatPanel({

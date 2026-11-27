@@ -646,8 +646,8 @@ function PartyDrawer({ onClose }: { onClose: () => void }) {
                 <span className="grow">{h.title}</span>
               </summary>
               {h.imageId &&
-                (table.handoutImages[h.imageId] ? (
-                  <img className="handout-image" src={table.handoutImages[h.imageId]} alt={h.title} />
+                (table.pictures[h.imageId] ? (
+                  <img className="handout-image" src={table.pictures[h.imageId]} alt={h.title} />
                 ) : (
                   <p className="muted small">The picture is on its way.</p>
                 ))}
@@ -729,7 +729,8 @@ function JournalDrawer({ onClose }: { onClose: () => void }) {
                   {e.questStatus && e.questStatus !== "active" && <span className="small muted">{e.questStatus === "done" ? "Done" : "Failed"}</span>}
                 </summary>
                 {e.parentId && byId.get(e.parentId) && <p className="muted small">In {byId.get(e.parentId)!.title}</p>}
-                {e.paragraphs.length ? e.paragraphs.map((p, i) => <Markdown key={i} text={p} />) : <p className="muted small">Nothing more is known yet.</p>}
+                {e.imageId && table.pictures[e.imageId] && <img className="handout-image" src={table.pictures[e.imageId]} alt={e.title} />}
+                {e.paragraphs.length ? e.paragraphs.map((p, i) => <Markdown key={i} text={p} />) : !e.imageId && <p className="muted small">Nothing more is known yet.</p>}
               </details>
             ))}
           </section>

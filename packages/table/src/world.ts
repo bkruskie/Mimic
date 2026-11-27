@@ -27,6 +27,8 @@ export interface WorldEntry {
   revealed: boolean;
   blocks: WorldBlock[];
   questStatus: QuestStatus | null;
+  /** A portrait or picture kept on the DM's device, with its own reveal switch. */
+  image?: { id: string; revealed: boolean } | null;
   updatedAt: string;
 }
 
@@ -39,11 +41,13 @@ export interface PublicWorldEntry {
   parentId: string | null;
   paragraphs: string[];
   questStatus: QuestStatus | null;
+  /** Sent separately in an "image" message; null unless the DM shows the picture. */
+  imageId: string | null;
 }
 
 const touch = (c: HostCampaign): HostCampaign => ({ ...c, updatedAt: new Date().toISOString() });
 
-export function saveWorldEntry(c: HostCampaign, e: Omit<WorldEntry, "updatedAt">): HostCampaign {
+export function saveWorldEntry(c: HostCampaign, e: Omit<WorldEntry, "updatedAt" | "image"> & { image?: WorldEntry["image"] }): HostCampaign {
   const list = c.world ?? [];
   const parentId = e.parentId && e.parentId !== e.id && list.some((x) => x.id === e.parentId) && !isDescendant(list, e.parentId, e.id) ? e.parentId : null;
   const clean: WorldEntry = {
@@ -52,6 +56,7 @@ export function saveWorldEntry(c: HostCampaign, e: Omit<WorldEntry, "updatedAt">
     parentId,
     blocks: e.blocks.map((b) => ({ ...b, text: b.text.slice(0, WORLD_TEXT_MAX) })),
     questStatus: e.kind === "quest" ? e.questStatus ?? "active" : null,
+    image: e.image ? { id: e.image.id, revealed: e.image.revealed === true } : null,
     updatedAt: new Date().toISOString(),
   };
   return touch({ ...c, world: list.some((x) => x.id === e.id) ? list.map((x) => (x.id === e.id ? clean : x)) : [...list, clean] });
@@ -86,5 +91,6 @@ export function publicWorld(c: HostCampaign): PublicWorldEntry[] {
       parentId: e.parentId && shown.has(e.parentId) ? e.parentId : null,
       paragraphs: e.blocks.filter((b) => b.revealed && b.text.trim()).map((b) => b.text),
       questStatus: e.questStatus,
+      imageId: e.image?.revealed ? e.image.id : null,
     }));
 }

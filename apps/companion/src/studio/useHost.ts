@@ -13,7 +13,7 @@ import {
   openLink,
   playerView,
   publicMap,
-  revealedHandouts,
+  sharedImageIds,
   tilePlan,
   LanCodeError,
   startLanHost,
@@ -78,16 +78,15 @@ export function useHost(initial: StudioCampaign) {
   /** Sends each player and the display the handout pictures and map tiles they don't have yet, covered where the fog is. */
   const syncTiles = useCallback(() => {
     tileQueue.current = tileQueue.current.then(async () => {
-      // Handout pictures first: only those of shown handouts, once per audience.
+      // Pictures first: only those of shown handouts and shown world entries, once per audience.
       const audiences = [...[...connectedRef.current].filter((u) => ref.current.members[u]), ...(display.current ? ["display"] : [])];
-      for (const h of revealedHandouts(ref.current)) {
-        if (!h.imageId) continue;
-        const key = `image:${h.imageId}`;
+      for (const imageId of sharedImageIds(ref.current)) {
+        const key = `image:${imageId}`;
         const waiting = audiences.filter((a) => !sent.current.get(a)?.has(key));
         if (!waiting.length) continue;
-        const data = await loadImage(h.imageId);
+        const data = await loadImage(imageId);
         if (!data) continue;
-        const image = { t: "image" as const, v: PROTOCOL_VERSION, id: h.imageId, data };
+        const image = { t: "image" as const, v: PROTOCOL_VERSION, id: imageId, data };
         for (const a of waiting) {
           if (a === "display") display.current?.postMessage(image);
           else sendTo(image, a);

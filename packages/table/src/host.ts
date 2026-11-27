@@ -275,3 +275,15 @@ function wasSeen(c: HostCampaign, from: string, commandId: string): boolean {
 function remember(c: HostCampaign, from: string, commandId: string): HostCampaign {
   return { ...c, seen: { ...c.seen, [from]: [...(c.seen[from] ?? []), commandId].slice(-SEEN_COMMANDS_LIMIT) } };
 }
+
+/** Every picture players may have: those of shown handouts and of shown world entries. Nothing else is ever sent. */
+export function sharedImageIds(campaign: HostCampaign): string[] {
+  const ids = [...revealedHandouts(campaign).map((h) => h.imageId), ...publicWorld(campaign).map((e) => e.imageId)];
+  return [...new Set(ids.filter((x): x is string => !!x))];
+}
+
+/** Every picture the campaign uses, for backups. */
+export function campaignImageIds(campaign: HostCampaign): string[] {
+  const ids = [...(campaign.handouts ?? []).map((h) => h.imageId), ...(campaign.world ?? []).map((e) => e.image?.id)];
+  return [...new Set(ids.filter((x): x is string => !!x))];
+}
