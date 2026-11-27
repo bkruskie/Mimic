@@ -27,6 +27,8 @@ A free, local-first tabletop roleplaying platform. Players keep their characters
 
 Not yet: multiclassing, homebrew forms, Pathfinder 2e, Neon Odyssey, and anything that needs a DM or a network.
 
+In a fight, the DM adds monsters from the SRD's bestiary (330 stat blocks): several at once, numbered, with initiative and hit points rolled. Each creature's stat block opens from its name, and every attack bonus, damage roll, check and save in it rolls in secret with one tap.
+
 The DM's studio has two modes. Prepare holds the world, maps, handouts, players and backups, one tab at a time. Play puts the map in play in the middle with the turn order, handouts to show, the party and the dice beside it.
 
 ## Run it

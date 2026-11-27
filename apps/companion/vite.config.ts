@@ -30,6 +30,16 @@ export default defineConfig({
       workbox: {
         // Precache everything, including the spell list, so the sheet works fully offline after the first visit.
         globPatterns: ["**/*.{js,css,html,svg,png,woff2,json}"],
+        // Except the DM's bestiary: players never need it. The studio fetches it whenever it's online, and this
+        // keeps it on the DM's device for play without internet.
+        globIgnores: ["**/monsters-*.js"],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => /\/assets\/monsters-[^/]*\.js$/.test(url.pathname),
+            handler: "CacheFirst",
+            options: { cacheName: "mimicbox-bestiary", expiration: { maxEntries: 4 } },
+          },
+        ],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         navigateFallback: "index.html",
         navigateFallbackDenylist: [/studio\.html/, /display\.html/],

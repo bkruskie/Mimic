@@ -231,12 +231,36 @@ try {
   };
   await addCreature("Ogre", -1, 59, false);
   await addCreature("Shadow assassin", 30, 30, true);
+  // Monsters from the SRD bestiary: two goblins, numbered, with rolled initiative and their stat block's HP.
+  await dm.page.locator("summary", { hasText: "Add monsters" }).click();
+  await dm.page.getByLabel("Search the SRD monsters").fill("goblin war");
+  await dm.page.getByLabel("How many").fill("2");
+  await dm.page.getByRole("button", { name: "Add 2 Goblin Warrior" }).click();
+  await eventually(async () => (await dm.page.getByLabel("Goblin Warrior 2 hit points").count()) === 1, "the DM adds two Goblin Warriors from the bestiary");
+  check(
+    (await dm.page.getByLabel("Goblin Warrior 1 hit points").inputValue()) === "10" && (await dm.page.getByLabel("Goblin Warrior 2 initiative").inputValue()) !== "",
+    "numbered, at the stat block's 10 hit points, with initiative rolled",
+  );
+  await dm.page.getByRole("button", { name: "Stat block for Goblin Warrior 1" }).click();
+  const statBlock = dm.page.getByRole("article", { name: "Goblin Warrior stat block" });
+  await statBlock.getByRole("button", { name: /^Roll Scimitar attack/ }).click();
+  await eventually(async () => /Scimitar attack/.test(await dm.page.getByRole("list", { name: "Rolls" }).innerText()), "tapping the Scimitar's +4 rolls the attack into the DM's log");
+  await shot(dm.page, "dm-stat-block");
+  await dm.page.keyboard.press("Escape");
+  await alice.page.waitForTimeout(800);
+  check(!/Scimitar/.test(await alice.page.locator("body").innerText()), "in secret: Alice never sees it");
+  const bestiaryOnPhone = await alice.page.evaluate(async () => {
+    let n = 0;
+    for (const key of await caches.keys()) n += (await (await caches.open(key)).keys()).filter((r) => r.url.includes("/monsters-")).length;
+    return n;
+  });
+  check(bestiaryOnPhone === 0, "and her phone never downloads the bestiary for offline use: it's the DM's");
   await dm.page.getByRole("button", { name: "First turn" }).click();
   await eventually(async () => /Round 1\./.test(await alice.page.locator(".combat-banner").innerText()), "the fight starts on Alice's sheet");
   check(!/assassin/i.test(await alice.page.locator(".combat-banner").innerText()), "the hidden assassin's turn shows no name to Alice");
   await eventually(async () => /Round 1/.test(await display.locator("main").innerText()), "the display shows the initiative order");
   check(!/assassin/i.test(await display.locator("main").innerText()) && !/59/.test(await display.locator("main").innerText()), "without the hidden assassin or creature hit points");
-  for (let i = 0; i < 3 && !/Your turn/.test(await alice.page.locator(".combat-banner").innerText()); i++) {
+  for (let i = 0; i < 6 && !/Your turn/.test(await alice.page.locator(".combat-banner").innerText()); i++) {
     await dm.page.getByRole("button", { name: "Next turn" }).click();
     await alice.page.waitForTimeout(800);
   }

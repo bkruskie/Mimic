@@ -121,3 +121,8 @@ export function Markdown({ text, className = "prose", link }: { text: string; cl
   }
   return className ? <div className={className}>{blocks}</div> : <Fragment>{blocks}</Fragment>;
 }
+
+/** Inline Markdown only (bold and italic), for text that sits inside a sentence built elsewhere. */
+export function InlineMarkdown({ text }: { text: string }) {
+  return <>{inline(text, "i")}</>;
+}

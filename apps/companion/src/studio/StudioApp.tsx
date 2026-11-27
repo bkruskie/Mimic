@@ -45,6 +45,8 @@ import { scaleHandoutImage } from "../lib/mapImages";
 import { StoredImage } from "./pictures";
 import { deleteCampaign, deleteImage, getCampaign, listCampaigns, loadImage, loadTiles, relaysFromAddress, saveCampaign, saveImage, saveTiles, type StudioCampaign } from "./store";
 import { MapEditor, MapsPanel } from "./MapsPanel";
+import { BestiaryAdd, StatBlock, useMonsters, type NewCombatant } from "./Bestiary";
+import { Drawer } from "../components/Drawer";
 import { PanelToggle, SidePanel, usePanelLayout, useWideTable } from "../components/SidePanel";
 import { WorldPanel } from "./WorldPanel";
 import { useHost } from "./useHost";
@@ -196,7 +198,7 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
   const [mode, setMode] = useStoredChoice<Mode>(`studio-mode:${initial.id}`, MODES, "prepare");
   const [prep, setPrep] = useStoredChoice<PrepTab>(`studio-prep:${initial.id}`, PREP_TABS, members.length ? "world" : "players");
   const wide = useWideTable();
-  const [panel, setPanel] = usePanelLayout(`mimicbox:play-layout:${initial.id}`, ["play"] as const, { open: true, width: 380, tab: "play" });
+  const [panel, setPanel] = usePanelLayout(`mimicbox:play-layout:${initial.id}`, ["play"] as const, { open: true, width: 440, tab: "play" });
   const activeMap = (campaign.maps ?? []).find((m) => m.id === campaign.activeMapId) ?? null;
   const status =
     host.status === "hosting"
@@ -217,18 +219,24 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
       onNext={() => update((c) => ({ ...c, ...nextTurn(c) }))}
       onPrevious={() => update((c) => ({ ...c, ...previousTurn(c) }))}
       canPlace={Boolean(campaign.activeMapId)}
-      onAdd={(x, place) =>
+      onAdd={(list, place) =>
         update((c) => {
           let next = c;
-          if (place && c.activeMapId) {
-            const map = (c.maps ?? []).find((m) => m.id === c.activeMapId)!;
-            const tokenId = newId();
-            next = { ...next, ...saveToken(next, map.id, { id: tokenId, name: x.name, x: Math.floor(columns(map) / 2), y: Math.floor(rows(map) / 2), memberId: null, hidden: x.hidden, color: "#D9476B" }) };
-            return { ...next, ...addCombatant(next, { ...x, tokenId }) };
-          }
-          return { ...next, ...addCombatant(next, x) };
+          list.forEach((x, i) => {
+            if (place && next.activeMapId) {
+              const map = (next.maps ?? []).find((m) => m.id === next.activeMapId)!;
+              // Several at once stand side by side from the middle of the map, five to a row.
+              const cx = Math.min(columns(map) - 1, Math.floor(columns(map) / 2) + (i % 5));
+              const cy = Math.min(rows(map) - 1, Math.floor(rows(map) / 2) + Math.floor(i / 5));
+              const tokenId = newId();
+              next = { ...next, ...saveToken(next, map.id, { id: tokenId, name: x.name, x: cx, y: cy, memberId: null, hidden: x.hidden, color: "#D9476B" }) };
+              next = { ...next, ...addCombatant(next, { ...x, tokenId }) };
+            } else next = { ...next, ...addCombatant(next, x) };
+          });
+          return next;
         })
       }
+      onRoll={(r) => update((c) => ({ ...c, ...addDmRoll(c, r, newId) }))}
       onChange={(id, patch) => update((c) => ({ ...c, ...updateCombatant(c, id, patch) }))}
       onRemove={(id) => update((c) => ({ ...c, ...removeCombatant(c, id) }))}
     />
@@ -1012,6 +1020,7 @@ function CombatPanel({
   onAdd,
   onChange,
   onRemove,
+  onRoll,
 }: {
   combat: Combat | null;
   canStart: boolean;
@@ -1020,10 +1029,13 @@ function CombatPanel({
   onEnd: () => void;
   onNext: () => void;
   onPrevious: () => void;
-  onAdd: (c: { id: string; name: string; initiative: number | null; hidden: boolean; hp: { current: number; max: number } | null }, placeOnMap: boolean) => void;
+  onAdd: (list: NewCombatant[], placeOnMap: boolean) => void;
   onChange: (id: string, patch: { initiative?: number | null; hidden?: boolean; hp?: { current: number; max: number } | null }) => void;
   onRemove: (id: string) => void;
+  onRoll: (r: Omit<SharedRoll, "id" | "at">) => void;
 }) {
+  const [statFor, setStatFor] = useState<string | null>(null);
+  const monsters = useMonsters(Boolean(statFor));
   const [name, setName] = useState("");
   const [mod, setMod] = useState("0");
   const [hp, setHp] = useState("");
@@ -1076,12 +1088,23 @@ function CombatPanel({
               }}
             />
             <span className="grow">
-              {c.name}
+              {c.monsterId ? (
+                <button className="wiki-link" aria-label={`Stat block for ${c.name}`} title="Open the stat block" onClick={() => setStatFor(c.id)}>
+                  {c.name}
+                </button>
+              ) : (
+                c.name
+              )}
               <br />
-              <span className="muted small">{c.memberId ? (c.initiative === null ? "Player, waiting for their roll" : "Player") : c.hidden ? "Hidden from players" : "Creature"}</span>
+              <span className="muted small">
+                {c.memberId ? (c.initiative === null ? "Player, waiting for their roll" : "Player") : c.hidden ? "Hidden from players" : "Creature"}
+                {c.ac ? `, AC ${c.ac}` : ""}
+              </span>
             </span>
+            {(c.hp || !c.memberId) && (
+            <span className="combat-controls">
             {c.hp && (
-              <span className="row" style={{ gap: 4, alignItems: "center" }}>
+              <span className="row" style={{ gap: 4, alignItems: "center", flexWrap: "nowrap" }}>
                 <button className="btn btn-quiet" aria-label={`${c.name} loses 1 HP`} onClick={() => onChange(c.id, { hp: { ...c.hp!, current: Math.max(0, c.hp!.current - 1) } })}>
                   −
                 </button>
@@ -1108,9 +1131,22 @@ function CombatPanel({
                 </button>
               </span>
             )}
+            </span>
+            )}
           </li>
         ))}
       </ol>
+      <BestiaryAdd existing={combat.combatants.map((c) => c.name)} canPlace={canPlace} onAdd={onAdd} />
+      {statFor &&
+        (() => {
+          const who = combat.combatants.find((c) => c.id === statFor);
+          const monster = Array.isArray(monsters) ? monsters.find((m) => m.id === who?.monsterId) : undefined;
+          return (
+            <Drawer title={who?.name ?? "Stat block"} onClose={() => setStatFor(null)}>
+              {!who ? <p className="muted">That creature has left the fight.</p> : monsters === "unavailable" ? <p className="notice">The stat block isn't on this computer yet. Open the studio once while online and the bestiary is kept for play without internet.</p> : !monster ? <p className="muted">Loading the stat block…</p> : <StatBlock monster={monster} who={who.name} hp={who.hp} onRoll={onRoll} />}
+            </Drawer>
+          );
+        })()}
       <form
         className="row"
         style={{ marginTop: 12, alignItems: "end" }}
@@ -1118,7 +1154,7 @@ function CombatPanel({
           e.preventDefault();
           if (!name.trim() || Number.isNaN(modifier)) return;
           const roll = rollDice(`1d20${modifier >= 0 ? "+" : ""}${modifier}`).total;
-          onAdd({ id: newId(), name: name.trim(), initiative: roll, hidden, hp: maxHp > 0 ? { current: maxHp, max: maxHp } : null }, canPlace && place);
+          onAdd([{ id: newId(), name: name.trim(), initiative: roll, hidden, hp: maxHp > 0 ? { current: maxHp, max: maxHp } : null }], canPlace && place);
           setName("");
           setHp("");
         }}
