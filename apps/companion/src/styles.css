@@ -2062,3 +2062,87 @@ details.feature[open] {
 .table-panel .dm-initiative li {
   padding: 8px 10px;
 }
+
+/* Sessions: the running log in Play, and recaps in Prepare. */
+.link-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--brass-bright);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.session-play h2 .muted {
+  font-family: var(--font-body);
+  font-weight: normal;
+  margin-left: 6px;
+}
+.session-log {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  font-size: var(--t-sm);
+}
+.session-log li {
+  display: grid;
+  grid-template-columns: 4.5em 1fr;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--seam);
+}
+.session-log li:last-child {
+  border-bottom: 0;
+}
+.session-log time {
+  color: var(--bone-dim);
+  font-variant-numeric: tabular-nums;
+}
+.session-log .log-defeat span,
+.session-log .log-crit span {
+  color: var(--brass-bright);
+}
+.session-log .log-fumble span {
+  color: var(--tongue);
+}
+.session-log .log-session span {
+  color: var(--bone-dim);
+  font-style: italic;
+}
+.session-note {
+  flex-wrap: nowrap;
+}
+.session-note .input {
+  flex: 1;
+  min-width: 0;
+}
+.session-card {
+  margin-top: 10px;
+  padding: 0;
+}
+.session-head {
+  width: 100%;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 12px var(--pad);
+  cursor: pointer;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.session-head .muted {
+  flex: 1;
+}
+.session-body {
+  padding: 0 var(--pad) var(--pad);
+  display: grid;
+  gap: 10px;
+}
+.session-body summary {
+  cursor: pointer;
+}

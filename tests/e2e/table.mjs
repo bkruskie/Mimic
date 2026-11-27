@@ -86,7 +86,7 @@ async function dmTo(page, place) {
   const switcher = page.getByRole("group", { name: "Mode" }).getByRole("button", { name: mode });
   if ((await switcher.getAttribute("aria-pressed")) !== "true") await switcher.click();
   if (place === "play") return;
-  const names = { world: "World", maps: "Maps", encounters: "Encounters", handouts: "Handouts", players: "Players", campaign: "Campaign" };
+  const names = { world: "World", maps: "Maps", encounters: "Encounters", handouts: "Handouts", sessions: "Sessions", players: "Players", campaign: "Campaign" };
   const tab = page.getByRole("navigation", { name: "Prepare" }).getByRole("button", { name: names[place], exact: true });
   if ((await tab.getAttribute("aria-pressed")) !== "true") await tab.click();
 }
@@ -133,6 +133,12 @@ try {
   await eventually(async () => /At The Sunken Bell/.test(await alice.page.locator(".sheet-top").innerText()), "Alice's sheet connects to the DM");
   await eventually(async () => /Wren Ashdown/.test(await text(dm.page)) && /Played by Alice/.test(await text(dm.page)), "the DM sees Wren, played by Alice");
   check(/11\s*\/\s*12/.test(await dm.page.locator(".member", { hasText: "Wren Ashdown" }).innerText()), "with her hit points (11 of 12)");
+
+  // ----- A session starts: from here on, what the party sees is logged -----
+  await dmTo(dm.page, "play");
+  await dm.page.getByRole("button", { name: "Start session 1" }).click();
+  await dm.page.getByRole("button", { name: "End session" }).waitFor();
+  check(/Session 1 started/.test(await dm.page.getByRole("list", { name: "Session log" }).innerText()), "the DM starts session 1 and its log begins");
 
   // Damage on Alice's sheet reaches the DM.
   await alice.page.locator(".hp-vital").click();
@@ -601,6 +607,36 @@ try {
   await shot(dm.page, "dm-play-phone");
   await dm.page.setViewportSize(dmSize);
 
+  // ----- The session ends: its log becomes a recap the party can read -----
+  await dmTo(dm.page, "play");
+  const sessionBox = dm.page.getByRole("region", { name: "Session" });
+  await sessionBox.getByLabel("Add to the log").fill("The party swore to find the bell.");
+  await sessionBox.getByRole("button", { name: "Add", exact: true }).click();
+  await sessionBox.getByRole("button", { name: /^Show all \d+ lines$/ }).click();
+  const logText = await sessionBox.getByRole("list", { name: "Session log" }).innerText();
+  check(
+    /Wren Ashdown rolled Athletics/.test(logText) && /rolled Ogre club/.test(logText) && /The party received “The ferryman's letter”/.test(logText) && /Bob joined as Bram Hollis/.test(logText) && /A fight began/.test(logText) && /The party swore to find the bell/.test(logText),
+    "the log holds the rolls, the handout, Bob joining, the fights and the DM's own note",
+  );
+  check(!/Ambush|Goblin Boss|Villain/.test(logText), "and nothing the party never saw: no secret roll, hidden creature or hidden handout");
+  await shot(dm.page, "dm-session-log");
+  await sessionBox.getByRole("button", { name: "End session" }).click();
+  const recapBox = dm.page.getByRole("article", { name: "Session 1" }).getByLabel("Recap");
+  await recapBox.waitFor();
+  const recap = await recapBox.inputValue();
+  check(/## What happened/.test(recap) && /The party received “The ferryman's letter”/.test(recap) && !/Ogre club/.test(recap), "ending it opens a recap drafted from the log, without the ordinary rolls");
+  await recapBox.fill(`${recap}\n\nNext time: the drowned vault.`);
+  await dm.page.getByRole("article", { name: "Session 1" }).getByRole("button", { name: "Share with players" }).click();
+  await eventually(async () => (await alice.page.getByText("New handout: Session 1 recap").count()) > 0, "sharing it sends Alice the recap as a handout");
+  await alice.page.locator(".chip-table").click();
+  await alice.page.getByRole("dialog").getByText("Session 1 recap").click();
+  const aliceRecap = await alice.page.getByRole("dialog").innerText();
+  check(/The party swore to find the bell/.test(aliceRecap) && /Next time: the drowned vault/.test(aliceRecap), "with the DM's edits");
+  await shot(alice.page, "alice-recap");
+  await alice.page.keyboard.press("Escape");
+  check(await dm.page.getByRole("button", { name: "Shared with players" }).isDisabled(), "and the DM sees it is shared");
+  await shot(dm.page, "dm-recap");
+
   // ----- Backups: the DM moves the campaign to another computer; a player restores their vault -----
   await dmTo(dm.page, "campaign");
   const [campaignFile] = await Promise.all([dm.page.waitForEvent("download"), dm.page.getByRole("button", { name: "Download a backup" }).click()]);
@@ -624,6 +660,8 @@ try {
   await dmTo(laptop.page, "world");
   const laptopWorld = await laptop.page.getByRole("region", { name: "World" }).innerText();
   check(/Port Ashen/.test(laptopWorld) && /Mara the ferrywoman/.test(laptopWorld) && /The Drowned Vault/.test(laptopWorld), "with its world notes, secrets included");
+  await dmTo(laptop.page, "sessions");
+  check(/Session 1[\s\S]*Shared/.test(await laptop.page.getByRole("article", { name: "Session 1" }).innerText()), "with session 1 and its shared recap");
   await dmTo(laptop.page, "maps");
   await laptop.page.getByRole("button", { name: /^docks/ }).click();
   await eventually(async () => (await laptop.page.getByRole("img", { name: "docks, as you see it" }).locator(".map-surface > img").count()) === 6, "the map and all six of its tiles come along");
