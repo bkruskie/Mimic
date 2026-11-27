@@ -56,3 +56,15 @@ export const CloseIcon = (p: SVGProps<SVGSVGElement>) => (
     <path d="M6 6l12 12M18 6 6 18" />
   </svg>
 );
+export const MapIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <path d="M9 4 3.5 6v14L9 18l6 2 5.5-2V4L15 6z" />
+    <path d="M9 4v14M15 6v14" />
+  </svg>
+);
+export const PanelIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+    <path d="M14.5 4.5v15" />
+  </svg>
+);

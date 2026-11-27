@@ -1,19 +1,22 @@
 import { criticalNotation, d20Notation, formatModifier, parseDice, type RollMode } from "@mimicbox/dice";
 import { CONDITIONS, applyDamage, heal, recordDeathSave, setExhaustion, setTempHp, toggleCondition, type Character, type DerivedSheet } from "@mimicbox/ruleset-dnd5e";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { go } from "../App";
-import { BackIcon, BagIcon, CloseIcon, D20Icon, ScrollIcon, SparkIcon, StarIcon, SwordIcon } from "../lib/icons";
+import { BackIcon, BagIcon, D20Icon, MapIcon, ScrollIcon, SparkIcon, StarIcon, SwordIcon } from "../lib/icons";
 import { content, useCharacter, useRoller, type ShownRoll } from "../lib/state";
 import { useTable } from "../lib/table";
-import { MapView } from "../components/MapView";
 import { applyEffect } from "@mimicbox/table";
-import { Markdown } from "../lib/markdown";
 import { AbilitiesTab } from "./sheet/AbilitiesTab";
 import { ActionsTab } from "./sheet/ActionsTab";
 import { GearTab } from "./sheet/GearTab";
 import { NotesTab } from "./sheet/NotesTab";
 import { SpellsTab } from "./sheet/SpellsTab";
 import { Portrait } from "./VaultScreen";
+import { Drawer } from "../components/Drawer";
+import { CombatBanner, JournalDrawer, PartyDrawer, tableStatusText } from "./TablePanels";
+import { TableView, useWideTable } from "./TableView";
+
+export { Drawer };
 
 export interface RollAsk {
   label: string;
@@ -54,11 +57,14 @@ export function SheetScreen({ id }: { id: string }) {
   const roller = useRoller(id);
   const [tab, setTab] = useState<Tab>(() => (sessionStorage.getItem(`tab:${id}`) as Tab | null) ?? "actions");
   const [lastAsk, setLastAsk] = useState<RollAsk | null>(null);
-  const [drawer, setDrawer] = useState<"hp" | "conditions" | "dice" | "history" | "party" | "map" | "journal" | null>(null);
-  const [mapTool, setMapTool] = useState<"view" | "measure">("view");
+  const [drawer, setDrawer] = useState<"hp" | "conditions" | "dice" | "history" | "party" | "journal" | null>(null);
   const cols = useColumns();
+  const wideTable = useWideTable();
   const table = useTable();
   const atTable = table.seat?.characterId === id;
+  // In a game, the sheet and the table (the map) are two views of the same screen.
+  const [chosenView, setView] = useState<"sheet" | "table">(() => (sessionStorage.getItem(`view:${id}`) === "table" ? "table" : "sheet"));
+  const view = atTable ? chosenView : "sheet";
   const shareCharacter = table.shareCharacter;
   const setEffectHandler = table.setEffectHandler;
   // Damage, healing and conditions from the DM land in this sheet's own state while it's open.
@@ -78,10 +84,11 @@ export function SheetScreen({ id }: { id: string }) {
   useEffect(() => {
     try {
       sessionStorage.setItem(`tab:${id}`, tab);
+      sessionStorage.setItem(`view:${id}`, chosenView);
     } catch {
       /* Private browsing can refuse storage; the tab just won't be remembered. */
     }
-  }, [id, tab]);
+  }, [id, tab, chosenView]);
 
   if (missing) {
     return (
@@ -111,8 +118,25 @@ export function SheetScreen({ id }: { id: string }) {
   const props: SheetProps = { character, sheet, update, ask: (r) => ask(r) };
   const hpPct = sheet.hp.max.value ? Math.max(0, Math.min(100, (sheet.hp.current / sheet.hp.max.value) * 100)) : 0;
 
+  // Sheet tabs show on phones; in the table view only in portrait, where the map sits between the bar and them.
+  const showTabs = cols === 1 && (view === "sheet" || !wideTable);
+  const rollInitiative = () => ask({ label: "Initiative", expression: "", d20Modifier: sheet.initiative.value });
+
   return (
     <>
+      {view === "table" ? (
+        <TableView
+          character={character}
+          sheet={sheet}
+          wide={wideTable}
+          onSheet={showTabs ? null : () => setView("sheet")}
+          onHp={() => setDrawer("hp")}
+          onParty={() => setDrawer("party")}
+          onJournal={() => setDrawer("journal")}
+          onRollInitiative={rollInitiative}
+        />
+      ) : (
+      <>
       <header className="sheet-top">
         <div className={cols > 1 ? "sheet-top-inner wide" : "sheet-top-inner"}>
           <div className="sheet-title">
@@ -169,8 +193,8 @@ export function SheetScreen({ id }: { id: string }) {
                 Journal
               </button>
             )}
-            {atTable && table.map && (
-              <button className="chip" onClick={() => setDrawer("map")}>
+            {atTable && (
+              <button className="chip" onClick={() => setView("table")}>
                 Map
               </button>
             )}
@@ -187,7 +211,7 @@ export function SheetScreen({ id }: { id: string }) {
       </header>
 
       <main className={cols > 1 ? "screen wide" : "screen"} style={{ paddingTop: 8 }}>
-        {atTable && table.combat && <CombatBanner sheet={sheet} onRollInitiative={() => ask({ label: "Initiative", expression: "", d20Modifier: sheet.initiative.value })} onOpen={() => setDrawer("party")} />}
+        {atTable && table.combat && <CombatBanner sheet={sheet} onRollInitiative={rollInitiative} onOpen={() => setDrawer("party")} />}
         {sheet.pending.length > 0 && (cols > 1 || tab !== "notes") && (
           <button
             className="notice notice-todo"
@@ -226,12 +250,14 @@ export function SheetScreen({ id }: { id: string }) {
           </div>
         )}
       </main>
+      </>
+      )}
 
-      <button className="die-fab" aria-label="Roll dice" onClick={() => setDrawer("dice")}>
+      <button className={showTabs ? "die-fab" : "die-fab no-tabs"} aria-label="Roll dice" onClick={() => setDrawer("dice")}>
         <D20Icon />
       </button>
 
-      {cols === 1 && (
+      {showTabs && (
         <nav className="tabbar" aria-label="Sheet sections">
           {(
             [
@@ -242,11 +268,24 @@ export function SheetScreen({ id }: { id: string }) {
               ["notes", ScrollIcon],
             ] as const
           ).map(([t, Icon]) => (
-            <button key={t} aria-current={tab === t ? "page" : undefined} onClick={() => setTab(t)}>
+            <button
+              key={t}
+              aria-current={view === "sheet" && tab === t ? "page" : undefined}
+              onClick={() => {
+                setTab(t);
+                setView("sheet");
+              }}
+            >
               <Icon />
               {TAB_LABELS[t]}
             </button>
           ))}
+          {atTable && (
+            <button aria-current={view === "table" ? "page" : undefined} onClick={() => setView("table")}>
+              <MapIcon />
+              Table
+            </button>
+          )}
         </nav>
       )}
 
@@ -271,32 +310,6 @@ export function SheetScreen({ id }: { id: string }) {
       {drawer === "hp" && <HpDrawer {...props} onClose={() => setDrawer(null)} />}
       {drawer === "party" && <PartyDrawer onClose={() => setDrawer(null)} />}
       {drawer === "journal" && <JournalDrawer onClose={() => setDrawer(null)} />}
-      {drawer === "map" && table.map && (
-        <Drawer title={table.map.name} onClose={() => setDrawer(null)}>
-          <div className="row" role="group" aria-label="Map tool" style={{ marginBottom: 8 }}>
-            <button className="chip" aria-pressed={mapTool === "view"} onClick={() => setMapTool("view")}>
-              Move my token
-            </button>
-            <button className="chip" aria-pressed={mapTool === "measure"} onClick={() => setMapTool("measure")}>
-              Measure
-            </button>
-          </div>
-          <MapView
-            tool={mapTool}
-            label={`${table.map.name}, the parts you can see`}
-            map={table.map}
-            tiles={table.mapTiles}
-            tokens={table.map.tokens}
-            doors={table.map.doors ?? []}
-            pins={table.map.pins ?? []}
-            activeTokenId={table.map.activeTokenId ?? null}
-            onDoor={mapTool === "view" ? (x, y) => table.toggleDoor(x, y) : undefined}
-            canMove={(t) => t.memberId !== null && t.memberId === table.memberId}
-            onMove={(t, x, y) => table.moveToken(t.id, x, y)}
-          />
-          <p className="muted small">{mapTool === "measure" ? "Drag from one square to another. Diagonal steps count 5 feet." : "Drag your token to move. Tap a door next to your token to open or close it. You see only what your DM has revealed."}</p>
-        </Drawer>
-      )}
       {drawer === "conditions" && <ConditionsDrawer {...props} onClose={() => setDrawer(null)} />}
       {drawer === "dice" && (
         <DiceDrawer
@@ -329,26 +342,6 @@ export function SheetScreen({ id }: { id: string }) {
   );
 }
 
-export function Drawer({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  return (
-    <div className="overlay" onClick={onClose}>
-      <div className="drawer" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head">
-          <h2>{title}</h2>
-          <button className="btn btn-quiet" style={{ padding: 6 }} aria-label="Close" onClick={onClose}>
-            <CloseIcon width={22} height={22} />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
 
 function RollDrawer({
   shown,
@@ -559,184 +552,3 @@ function DiceDrawer({ onClose, onRoll }: { onClose: () => void; onRoll: (express
   );
 }
 
-function tableStatusText(status: ReturnType<typeof useTable>["status"], campaign: string): string {
-  switch (status) {
-    case "connected":
-      return `At ${campaign}`;
-    case "waiting":
-      return `Waiting for the DM of ${campaign}`;
-    case "connecting":
-      return `Connecting to ${campaign}`;
-    case "denied":
-      return `${campaign}: not let in`;
-    case "error":
-      return `${campaign}: can't connect`;
-    default:
-      return campaign;
-  }
-}
-
-function PartyDrawer({ onClose }: { onClose: () => void }) {
-  const table = useTable();
-  const campaign = table.invite?.campaign ?? "The game";
-  return (
-    <Drawer title={campaign} onClose={onClose}>
-      {table.problem ? (
-        <p className="notice">{table.problem}</p>
-      ) : (
-        <p className="muted small" style={{ marginTop: 0 }}>
-          {table.status === "connected"
-            ? "Connected to your DM. Your sheet and rolls are shared with the table as you play."
-            : table.status === "waiting"
-              ? table.seat?.lan
-                ? "The connection to the DM's computer dropped. Ask the DM for a new code and scan it to reconnect; nothing you do meanwhile is lost."
-                : "Waiting for your DM's app. It connects by itself when the DM starts hosting."
-              : "Connecting…"}
-        </p>
-      )}
-      {table.seat?.lan && table.status !== "connected" && (
-        <button className="btn btn-primary" onClick={() => go({ name: "join", code: null })}>
-          Scan a new code
-        </button>
-      )}
-      {table.combat && (
-        <>
-          <h3>Combat, round {table.combat.round}</h3>
-          <ol className="initiative" aria-label="Initiative order">
-            {table.combat.order.map((c) => (
-              <li key={c.id} aria-current={c.id === table.combat!.turnId ? "true" : undefined} className={c.memberId === table.memberId ? "you" : ""}>
-                <span className="init">{c.initiative ?? "–"}</span>
-                <span className="grow">{c.name}</span>
-                {c.id === table.combat!.turnId && <span className="small">Acting</span>}
-              </li>
-            ))}
-          </ol>
-        </>
-      )}
-      <h3 style={{ marginTop: 16 }}>Party</h3>
-      {table.party.length === 0 && <p className="muted">No one else yet.</p>}
-      <ul className="rows" aria-label="Party">
-        {table.party.map((m) => (
-          <li key={m.userId} className="resource">
-            <div className="spread">
-              <span>
-                <strong>{m.character?.name ?? m.playerName}</strong>
-                <br />
-                <span className="muted small">
-                  {m.character ? `${m.character.classSummary}, played by ${m.playerName}` : `${m.playerName} hasn't shared a character yet`}
-                </span>
-              </span>
-              <span className={m.connected ? "small" : "muted small"}>{m.connected ? "Here" : "Away"}</span>
-            </div>
-            {m.character && (
-              <div className="muted small" style={{ marginTop: 6 }}>
-                HP {m.character.hp.current} of {m.character.hp.max}
-                {m.character.hp.temp ? ` (+${m.character.hp.temp} temporary)` : ""}, AC {m.character.ac}
-                {m.character.conditions.length ? `, ${m.character.conditions.join(", ")}` : ""}
-              </div>
-            )}
-          </li>
-        ))}
-      </ul>
-      {table.handouts.length > 0 && (
-        <>
-          <h3 style={{ marginTop: 16 }}>Handouts</h3>
-          {[...table.handouts].reverse().map((h) => (
-            <details key={h.id} className="feature" aria-label={h.title}>
-              <summary>
-                <span className="grow">{h.title}</span>
-              </summary>
-              {h.imageId &&
-                (table.pictures[h.imageId] ? (
-                  <img className="handout-image" src={table.pictures[h.imageId]} alt={h.title} />
-                ) : (
-                  <p className="muted small">The picture is on its way.</p>
-                ))}
-              <Markdown text={h.body} />
-            </details>
-          ))}
-        </>
-      )}
-      <h3 style={{ marginTop: 16 }}>Table rolls</h3>
-      {table.rolls.length === 0 && <p className="muted">No rolls shared yet.</p>}
-      <ul className="history" aria-label="Table rolls">
-        {[...table.rolls].reverse().map((r) => (
-          <li key={r.id}>
-            <span className={`t ${r.flag ?? ""}`}>{r.total}</span>
-            <span className="grow">
-              {r.characterName}: {r.label}
-              <br />
-              <span className="breakdown small">{r.breakdown}</span>
-            </span>
-          </li>
-        ))}
-      </ul>
-      <button className="btn" style={{ marginTop: 16 }} onClick={() => void table.leave().then(onClose)}>
-        Leave the game
-      </button>
-    </Drawer>
-  );
-}
-
-function CombatBanner({ sheet, onRollInitiative, onOpen }: { sheet: DerivedSheet; onRollInitiative: () => void; onOpen: () => void }) {
-  const table = useTable();
-  const combat = table.combat!;
-  const mine = combat.order.find((c) => c.memberId === table.memberId);
-  const yourTurn = mine && combat.turnId === mine.id;
-  if (mine && mine.initiative === null) {
-    return (
-      <div className="notice notice-todo combat-banner" role="status">
-        <span>Combat has started. Roll initiative ({formatModifier(sheet.initiative.value)}).</span>
-        <button className="btn btn-primary" onClick={onRollInitiative}>
-          Roll initiative
-        </button>
-      </div>
-    );
-  }
-  return (
-    <button className={yourTurn ? "notice combat-banner your-turn" : "notice combat-banner"} style={{ width: "100%", textAlign: "left", border: 0 }} onClick={onOpen} role="status">
-      {yourTurn ? `Your turn. Round ${combat.round}.` : `Round ${combat.round}. ${combat.order.find((c) => c.id === combat.turnId)?.name ?? "Waiting for the next turn"}${combat.order.some((c) => c.id === combat.turnId) ? " is acting." : "."}`}
-    </button>
-  );
-}
-
-const JOURNAL_GROUPS = [
-  ["quest", "Quests"],
-  ["place", "Places"],
-  ["person", "People"],
-  ["faction", "Factions"],
-  ["lore", "Lore"],
-] as const;
-
-/** What the party has learned of the DM's world. */
-function JournalDrawer({ onClose }: { onClose: () => void }) {
-  const table = useTable();
-  const byId = new Map(table.world.map((e) => [e.id, e]));
-  return (
-    <Drawer title="Journal" onClose={onClose}>
-      <p className="muted small" style={{ marginTop: 0 }}>
-        What your DM has shared about the world of {table.invite?.campaign ?? "this game"}.
-      </p>
-      {JOURNAL_GROUPS.map(([kind, heading]) => {
-        const entries = table.world.filter((e) => e.kind === kind);
-        if (!entries.length) return null;
-        return (
-          <section key={kind} aria-label={heading}>
-            <h3 style={{ marginTop: 14 }}>{heading}</h3>
-            {entries.map((e) => (
-              <details key={e.id} className="feature">
-                <summary>
-                  <span className="grow">{e.title}</span>
-                  {e.questStatus && e.questStatus !== "active" && <span className="small muted">{e.questStatus === "done" ? "Done" : "Failed"}</span>}
-                </summary>
-                {e.parentId && byId.get(e.parentId) && <p className="muted small">In {byId.get(e.parentId)!.title}</p>}
-                {e.imageId && table.pictures[e.imageId] && <img className="handout-image" src={table.pictures[e.imageId]} alt={e.title} />}
-                {e.paragraphs.length ? e.paragraphs.map((p, i) => <Markdown key={i} text={p} />) : !e.imageId && <p className="muted small">Nothing more is known yet.</p>}
-              </details>
-            ))}
-          </section>
-        );
-      })}
-    </Drawer>
-  );
-}

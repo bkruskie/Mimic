@@ -399,7 +399,8 @@ button.vital:hover {
   background: var(--lid);
   border-top: 1px solid var(--seam);
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
 }
 .tabbar button {
   border: 0;
@@ -1464,4 +1465,166 @@ details.feature[open] {
 .map-surface .pin.dm {
   border: 1px dashed #9b7fd1;
   color: #d8cbf5;
+}
+
+.die-fab.no-tabs {
+  bottom: calc(16px + var(--safe-bottom));
+}
+
+/* ---------- the table view: a player's map, as large as the screen allows ---------- */
+.table-view {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - var(--tabbar) - var(--safe-bottom));
+}
+.table-view.wide {
+  height: 100dvh;
+}
+.table-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--seam);
+  background: var(--lid);
+  min-height: 52px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+.table-bar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 6px 10px;
+}
+.table-bar-name {
+  font-family: var(--font-display);
+  font-size: var(--t-lg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40vw;
+}
+.table-bar-gap {
+  flex: 1;
+}
+.table-bar-stat {
+  white-space: nowrap;
+  color: var(--bone-dim);
+}
+.table-hp {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  min-height: 40px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--seam);
+  background: transparent;
+  color: var(--bone);
+  font: inherit;
+  cursor: pointer;
+}
+.table-hp-bar {
+  width: 44px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--seam);
+  overflow: hidden;
+}
+.table-hp-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--moss);
+}
+.table-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.table-map {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  gap: 6px;
+}
+.table-map .combat-banner {
+  margin: 0;
+}
+.table-map .map-view {
+  flex: 1;
+  min-height: 0;
+  grid-template-rows: 1fr auto;
+}
+.table-map .map-box {
+  max-height: none;
+  height: 100%;
+}
+.table-map .map-surface {
+  margin: 0 auto;
+}
+/* Map tools sit in a slim row above the map, never over it: a token could be under them. */
+.table-tools {
+  display: flex;
+  gap: 6px;
+}
+.table-empty {
+  margin: auto;
+  max-width: 32ch;
+  text-align: center;
+}
+.table-resize {
+  flex: none;
+  width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+  background: linear-gradient(to right, transparent 4px, var(--seam) 4px, var(--seam) 6px, transparent 6px);
+}
+.table-resize:hover,
+.table-resize:focus-visible {
+  background: linear-gradient(to right, transparent 3px, var(--brass) 3px, var(--brass) 7px, transparent 7px);
+  outline: none;
+}
+.table-panel {
+  flex: none;
+  overflow-y: auto;
+  padding: 12px 14px 90px;
+}
+.table-panel-tabs {
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.table-panel-title {
+  margin: 4px 0 8px;
+  font-size: var(--t-xl);
+}
+
+/* Phone in portrait: the map takes the width and at most the screen's height; the game continues below it. */
+.table-view:not(.wide) .table-map {
+  overflow-y: auto;
+}
+.table-view:not(.wide) .table-map .map-view {
+  flex: none;
+}
+.table-view:not(.wide) .table-map .map-box {
+  height: auto;
+  max-height: calc(100dvh - var(--tabbar) - var(--safe-bottom) - 170px);
+}
+.table-view:not(.wide) .table-empty {
+  margin: 24px auto;
+}
+.table-below {
+  padding: 4px 6px 96px;
+}
+.table-status {
+  white-space: nowrap;
+}
+.table-bar .table-tools .chip {
+  min-height: 36px;
 }
