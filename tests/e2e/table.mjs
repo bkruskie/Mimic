@@ -618,6 +618,21 @@ try {
   check(dark(await danaPixel(305, 305)) && dark(await danaPixel(200, 40)) && dark(await danaPixel(110, 144)), "the red secret square, the hex above and the hex beside it are painted over");
   await shot(dana.page, "dana-hex-map");
   await dana.page.keyboard.press("Escape");
+
+  // ----- No grid: straight-line measuring -----
+  await cabin.page.getByLabel("Grid shape").selectOption("none");
+  await cabin.page.getByLabel("Pixels per 5 feet").fill("100");
+  await cabin.page.getByRole("button", { name: "Apply grid" }).click();
+  await cabin.page.getByRole("button", { name: "Measure" }).click();
+  await hexSurface.scrollIntoViewIfNeeded();
+  const nb = await hexSurface.boundingBox();
+  const nk = nb.width / 1100;
+  await cabin.page.mouse.move(nb.x + 100 * nk, nb.y + 100 * nk);
+  await cabin.page.mouse.down();
+  await cabin.page.mouse.move(nb.x + 400 * nk, nb.y + 500 * nk, { steps: 6 });
+  await cabin.page.mouse.up();
+  await eventually(async () => (await cabin.page.locator(".ruler-label").innerText()).trim() === "25 ft", "with no grid, the ruler measures a straight line: 300 by 400 pixels is 25 feet");
+  check((await cabin.page.getByRole("img", { name: "docks, as you see it" }).locator(".map-overlay > path, .map-overlay pattern").count()) === 0, "and no grid lines are drawn");
   await dana.context.close();
 
   await cabin.context.close();

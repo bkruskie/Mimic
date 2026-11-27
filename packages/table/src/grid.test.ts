@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addMap, canSee, cellAt, cellCentre, cellDistance, cellPolygon, columns, createCampaign, distanceFeet, rows, setGrid, setRevealed, setWalls, tilePlan, type GridKind, type MapScene } from "./index.js";
+import { addMap, movePlayerToken, parsePlayerMessage, publicMap, setActiveMap, tokenSpotAt, canSee, cellAt, cellCentre, cellDistance, cellPolygon, columns, createCampaign, distanceFeet, rows, setGrid, setRevealed, setWalls, tilePlan, type GridKind, type MapScene } from "./index.js";
 
 const map = (kind: GridKind, size = 60): MapScene => ({
   id: "m",
@@ -84,5 +84,33 @@ describe("hex grids", () => {
     expect(m.revealed).toEqual([]);
     expect(m.tokens[0]!.x).toBeLessThan(columns(m));
     expect(m.tokens[0]!.y).toBeLessThan(rows(m));
+  });
+});
+
+describe("maps with no grid", () => {
+  const withToken = (kind: GridKind) =>
+    setActiveMap(addMap(createCampaign({ id: "c", name: "C", room: "r", key: "k" }), { ...map(kind, 100), tokens: [{ id: "t", name: "Wren", x: 1, y: 1, memberId: "alice", hidden: false, color: "#7fa66b" }] }), "m");
+
+  it("measure straight lines", () => {
+    const m = map("none", 100);
+    expect(distanceFeet({ x: 0, y: 0 }, { x: 3, y: 4 }, m)).toBe(25);
+    expect(distanceFeet({ x: 0, y: 0 }, { x: 1, y: 1 }, m)).toBe(7);
+  });
+
+  it("let tokens stand anywhere, to a hundredth of a cell, only on maps with no grid", () => {
+    expect(tokenSpotAt(map("none", 100), 260, 175)).toEqual({ x: 2.1, y: 1.25 });
+    expect(tokenSpotAt(map("square", 100), 260, 175)).toEqual({ x: 2, y: 1 });
+    expect(movePlayerToken(withToken("none"), "alice", "t", 2.1, 1.25)!.maps![0]!.tokens[0]).toMatchObject({ x: 2.1, y: 1.25 });
+    expect(movePlayerToken(withToken("square"), "alice", "t", 2.1, 1.25)).toBeNull();
+    expect(movePlayerToken(withToken("none"), "alice", "t", 2.123, 1)).toBeNull();
+    expect(parsePlayerMessage({ t: "move", v: 1, commandId: "c1", tokenId: "t", x: 2.1, y: 1.25 })).not.toBeNull();
+  });
+
+  it("show a token between cells only when the cell it mostly stands in is revealed", () => {
+    let c = movePlayerToken(withToken("none"), "alice", "t", 2.4, 1.6)!;
+    c = { ...c, maps: c.maps!.map((m) => ({ ...m, tokens: [...m.tokens, { id: "o", name: "Ogre", x: 2.4, y: 1.6, memberId: null, hidden: false, color: "#d9476b" }] })) };
+    expect(publicMap(c.maps![0]!, "bob").tokens).toEqual([]);
+    c = setRevealed(c, "m", [{ x: 2, y: 2 }], true);
+    expect(publicMap(c.maps![0]!, "bob").tokens.map((t) => t.id)).toEqual(["t", "o"]);
   });
 });

@@ -1,14 +1,16 @@
 /**
- * Grid geometry for battle maps: squares, hexes in rows (pointy tops, odd rows shifted right) and hexes in columns
- * (flat tops, odd columns shifted down). Cells are addressed by column x and row y on every grid, so fog, walls,
+ * Grid geometry for battle maps: squares, hexes in rows (pointy tops, odd rows shifted right), hexes in columns
+ * (flat tops, odd columns shifted down), and no grid. A map with no grid keeps invisible squares for fog, walls and
+ * doors, but its tokens stand anywhere (fractional cells) and distances are straight lines. Cells are addressed by column x and row y on every grid, so fog, walls,
  * doors and tokens are stored the same way whatever the grid.
  *
  * For squares, `size` is the side of a square. For hexes it is the distance between neighbouring hex centres
- * along a row (hexes in rows) or a column (hexes in columns), which is what a DM measures on the image.
+ * along a row (hexes in rows) or a column (hexes in columns), which is what a DM measures on the image. With no
+ * grid it is the number of pixels per 5 feet.
  */
 
-export type GridKind = "square" | "hex-rows" | "hex-columns";
-export const GRID_KINDS: readonly GridKind[] = ["square", "hex-rows", "hex-columns"];
+export type GridKind = "square" | "hex-rows" | "hex-columns" | "none";
+export const GRID_KINDS: readonly GridKind[] = ["square", "hex-rows", "hex-columns", "none"];
 
 export interface Grid {
   size: number;
@@ -39,7 +41,9 @@ export interface Rect {
 
 const SQRT3 = Math.sqrt(3);
 export const gridKind = (m: GridMap): GridKind => m.grid.kind ?? "square";
-const isHex = (m: GridMap) => gridKind(m) !== "square";
+const isHex = (m: GridMap) => gridKind(m) === "hex-rows" || gridKind(m) === "hex-columns";
+/** Tokens stand anywhere and distances are straight lines. */
+export const isGridless = (m: GridMap) => gridKind(m) === "none";
 
 /*
  * Hexes in columns are hexes in rows with x and y swapped, so the hex maths is written once, for rows, in a frame
@@ -168,9 +172,10 @@ const axial = (m: GridMap, c: Point) => {
 
 /**
  * Steps between two cells. On squares a diagonal step counts as one (the SRD's rule); on hexes every neighbour
- * is one step.
+ * is one step; with no grid it is the straight-line distance, in cells, and need not be whole.
  */
 export function cellDistance(m: GridMap, a: Point, b: Point): number {
+  if (isGridless(m)) return Math.hypot(a.x - b.x, a.y - b.y);
   if (!isHex(m)) return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
   const p = axial(m, a);
   const q = axial(m, b);
@@ -190,3 +195,13 @@ export function gridPath(m: GridMap): string {
 
 export const polygonPath = (pts: Point[]) => `M${pts.map((p) => `${round(p.x)} ${round(p.y)}`).join("L")}Z`;
 const round = (n: number) => Math.round(n * 10) / 10;
+
+/** The cell a token stands in. Tokens on a map with no grid can sit between cells; elsewhere this is the token's cell. */
+export const tokenCell = (p: Point): Point => ({ x: Math.round(p.x), y: Math.round(p.y) });
+
+/** Where a token may stand for a point on the image: a cell, or on a map with no grid any point, to 1/100 of a cell. */
+export function tokenSpotAt(m: GridMap, px: number, py: number): Point {
+  if (!isGridless(m)) return cellAt(m, px, py);
+  const r = (n: number, max: number) => Math.round(Math.max(0, Math.min(max, n)) * 100) / 100;
+  return { x: r((px - m.grid.offsetX) / m.grid.size - 0.5, columns(m) - 1), y: r((py - m.grid.offsetY) / m.grid.size - 0.5, rows(m) - 1) };
+}
