@@ -1,10 +1,10 @@
 /**
- * A battle map: tiles, a square grid, tokens and, for the DM, the fog drawn over squares players can't see.
+ * A battle map: tiles, a grid of squares or hexes, tokens and, for the DM, the fog drawn over cells players can't see.
  * Used by the DM page, the player's sheet and the table display. Plain DOM and SVG, no canvas, so it stays crisp
  * when zoomed and simple to test.
  */
-import { TILE_SIZE, columns, distanceFeet, rows, type MapScene, type Token } from "@mimicbox/table";
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { TILE_SIZE, cellAt as gridCellAt, cellCentre, cellPolygon, columns, distanceFeet, gridKind, gridPath, polygonPath, rows, type MapScene, type Point, type Token } from "@mimicbox/table";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 
 export type MapTool = "view" | "reveal" | "hide" | "move" | "measure" | "wall" | "erase" | "door";
 /** Tools that paint across squares by dragging. */
@@ -40,9 +40,12 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
   const [zoom, setZoom] = useState(1);
   const [drag, setDrag] = useState<{ token: Token; x: number; y: number } | null>(null);
   const [paint, setPaint] = useState<Map<number, { x: number; y: number }> | null>(null);
-  const cols = columns(map as MapScene);
-  const rws = rows(map as MapScene);
+  const cols = columns(map);
+  const rws = rows(map);
   const { size, offsetX, offsetY } = map.grid;
+  const hex = gridKind(map) !== "square";
+  // Every hex outline in one path; recomputed only when the grid changes.
+  const hexGrid = useMemo(() => (hex ? gridPath(map) : ""), [hex, map.width, map.height, map.grid.size, map.grid.offsetX, map.grid.offsetY, map.grid.kind]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scale to the box, then let the user zoom from there.
   useEffect(() => {
@@ -62,13 +65,22 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
   const scale = fitScale * zoom;
   const cellAt = (e: PointerEvent): { x: number; y: number } => {
     const r = surface.current!.getBoundingClientRect();
-    const px = (e.clientX - r.left) / scale;
-    const py = (e.clientY - r.top) / scale;
-    const x = px < offsetX ? 0 : Math.floor((px - offsetX) / size);
-    const y = py < offsetY ? 0 : Math.floor((py - offsetY) / size);
-    return { x: Math.max(0, Math.min(cols - 1, x)), y: Math.max(0, Math.min(rws - 1, y)) };
+    return gridCellAt(map, (e.clientX - r.left) / scale, (e.clientY - r.top) / scale);
   };
-  const center = (x: number, y: number) => ({ cx: offsetX + (x + 0.5) * size, cy: offsetY + (y + 0.5) * size });
+  const center = (x: number, y: number) => {
+    const c = cellCentre(map, x, y);
+    return { cx: c.x, cy: c.y };
+  };
+  /** A cell's shape: a rect on squares (crisp, and what the tests look for), a polygon on hexes. */
+  const shape = (x: number, y: number, className: string, key: string, shrink = 1) => {
+    if (!hex) {
+      const inset = (size * (1 - shrink)) / 2;
+      return <rect key={key} className={className} x={offsetX + x * size + inset} y={offsetY + y * size + inset} width={size * shrink} height={size * shrink} />;
+    }
+    const c = cellCentre(map, x, y);
+    const pts = cellPolygon(map, x, y).map((p): Point => ({ x: c.x + (p.x - c.x) * shrink, y: c.y + (p.y - c.y) * shrink }));
+    return <path key={key} className={className} d={polygonPath(pts)} />;
+  };
   const painting = tool === "reveal" || tool === "hide" || tool === "wall" || tool === "erase";
   const [measuring, setMeasuring] = useState(false);
 
@@ -113,7 +125,7 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
   }
 
   const fog: { x: number; y: number }[] = [];
-  if (revealed) for (let y = 0; y < rws; y++) for (let x = 0; x < cols; x++) if (!revealed.has(y * cols + x)) fog.push({ x, y });
+  if (revealed && !hex) for (let y = 0; y < rws; y++) for (let x = 0; x < cols; x++) if (!revealed.has(y * cols + x)) fog.push({ x, y });
 
   return (
     <div className="map-view">
@@ -137,33 +149,28 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
             />
           ))}
           <svg className="map-overlay" viewBox={`0 0 ${map.width} ${map.height}`} preserveAspectRatio="none" aria-hidden="true">
-            <defs>
-              <pattern id="grid" x={offsetX} y={offsetY} width={size} height={size} patternUnits="userSpaceOnUse">
-                <path d={`M ${size} 0 L 0 0 0 ${size}`} fill="none" stroke="rgba(239,228,210,0.35)" strokeWidth={Math.max(1, size / 60)} />
-              </pattern>
-            </defs>
-            <rect width={map.width} height={map.height} fill="url(#grid)" />
-            {fog.map((c) => (
-              <rect key={`f${c.x}:${c.y}`} className="fog" x={offsetX + c.x * size} y={offsetY + c.y * size} width={size} height={size} />
-            ))}
-            {walls &&
-              [...walls].map((i) => (
-                <rect key={`w${i}`} className="wall" x={offsetX + (i % cols) * size} y={offsetY + Math.floor(i / cols) * size} width={size} height={size} />
-              ))}
-            {doors?.map((d) => (
-              <rect
-                key={`d${d.x}:${d.y}`}
-                className={d.open ? "door open" : "door"}
-                x={offsetX + d.x * size + size * 0.15}
-                y={offsetY + d.y * size + size * 0.15}
-                width={size * 0.7}
-                height={size * 0.7}
-              />
-            ))}
-            {paint &&
-              [...paint.values()].map((c) => (
-                <rect key={`p${c.x}:${c.y}`} className={`paint-${tool}`} x={offsetX + c.x * size} y={offsetY + c.y * size} width={size} height={size} />
-              ))}
+            {hex ? (
+              <path d={hexGrid} fill="none" stroke="rgba(239,228,210,0.35)" strokeWidth={Math.max(1, size / 60)} />
+            ) : (
+              <>
+                <defs>
+                  <pattern id="grid" x={offsetX} y={offsetY} width={size} height={size} patternUnits="userSpaceOnUse">
+                    <path d={`M ${size} 0 L 0 0 0 ${size}`} fill="none" stroke="rgba(239,228,210,0.35)" strokeWidth={Math.max(1, size / 60)} />
+                  </pattern>
+                </defs>
+                <rect width={map.width} height={map.height} fill="url(#grid)" />
+              </>
+            )}
+            {hex && revealed ? (
+              // Hexes: the whole map minus the revealed hexes, so margins outside every hex are fogged too, as they
+              // are in what players receive.
+              <path className="fog" fillRule="evenodd" d={`M0 0H${map.width}V${map.height}H0Z${[...revealed].map((i) => polygonPath(cellPolygon(map, i % cols, Math.floor(i / cols)))).join("")}`} />
+            ) : (
+              fog.map((c) => shape(c.x, c.y, "fog", `f${c.x}:${c.y}`))
+            )}
+            {walls && [...walls].map((i) => shape(i % cols, Math.floor(i / cols), "wall", `w${i}`))}
+            {doors?.map((d) => shape(d.x, d.y, d.open ? "door open" : "door", `d${d.x}:${d.y}`, 0.7))}
+            {paint && [...paint.values()].map((c) => shape(c.x, c.y, `paint-${tool}`, `p${c.x}:${c.y}`))}
             {ruler && (
               <g className="ruler">
                 <line x1={center(ruler.from.x, ruler.from.y).cx} y1={center(ruler.from.x, ruler.from.y).cy} x2={center(ruler.to.x, ruler.to.y).cx} y2={center(ruler.to.x, ruler.to.y).cy} strokeWidth={Math.max(2, size / 14)} />
@@ -199,7 +206,7 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
       <div className="row map-zoom">
         {ruler && (
           <span className="ruler-label" role="status">
-            {distanceFeet(ruler.from, ruler.to)} ft
+            {distanceFeet(ruler.from, ruler.to, map)} ft
           </span>
         )}
         <button type="button" className="btn btn-quiet" aria-label="Zoom out" onClick={() => setZoom((z) => Math.max(0.5, z / 1.25))}>

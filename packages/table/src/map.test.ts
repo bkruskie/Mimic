@@ -58,10 +58,11 @@ describe("fog of war", () => {
     const m = c.maps![0]!;
     expect(publicMap(m, "alice").tiles.map((t) => [t.tx, t.ty])).toEqual([[0, 0]]);
     const plan = tilePlan(m, 0, 0);
-    // The tile holds squares 0 to 5 across and 0 to 5 down (partly); everything but the two revealed is covered.
-    expect(plan.cover).not.toContainEqual({ x: 0, y: 0, w: 100, h: 100 });
-    expect(plan.cover).toContainEqual({ x: 200, y: 0, w: 100, h: 100 });
-    expect(plan.cover).toContainEqual({ x: 500, y: 0, w: 12, h: 100 }); // the sliver of square 5 inside this tile
+    // Only the two revealed squares are kept; the rest of the tile is painted over.
+    expect(plan.keep).toEqual([
+      [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
+      [{ x: 100, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 100 }, { x: 100, y: 100 }],
+    ]);
     expect(tilePlan(m, 1, 0).send).toBe(false);
   });
 
@@ -92,7 +93,7 @@ describe("fog of war", () => {
   it("starts the fog over when the grid changes", () => {
     const c = setGrid(revealAll(campaign(), "docks", true), "docks", { size: 50, offsetX: 10, offsetY: 0 });
     expect(c.maps![0]!.revealed).toEqual([]);
-    expect(c.maps![0]!.grid).toEqual({ size: 50, offsetX: 10, offsetY: 0 });
+    expect(c.maps![0]!.grid).toEqual({ size: 50, offsetX: 10, offsetY: 0, kind: "square" });
   });
 });
 

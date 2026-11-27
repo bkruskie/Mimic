@@ -1,10 +1,13 @@
 /**
- * Battle maps: an image on a square grid, tokens on squares, and fog of war. Secrecy rule: a player or display
+ * Battle maps: an image on a grid of squares or hexes (see grid.ts), tokens on cells, and fog of war. Secrecy rule: a player or display
  * never receives pixels or tokens from squares the DM hasn't revealed. The image is cut into tiles; a tile is sent
  * only if one of its squares is revealed, and every unrevealed square inside it is painted over before it leaves
  * the DM's device. These functions decide what is allowed; the app does the pixel work.
  */
+import { cellAt, cellBounds, cellCentre, cellDistance, cellPolygon, columns, GRID_KINDS, rows, type Grid, type GridKind, type Point, type Rect } from "./grid.js";
 import type { HostCampaign } from "./host.js";
+
+export { cellRect, columns, rows } from "./grid.js";
 
 /** Tile edge in image pixels. */
 export const TILE_SIZE = 512;
@@ -30,8 +33,8 @@ export interface MapScene {
   /** Image size in pixels after scaling. */
   width: number;
   height: number;
-  /** Square size in pixels, and where the first full square starts. */
-  grid: { size: number; offsetX: number; offsetY: number };
+  /** Cell size in pixels, where the first full cell starts, and the kind of grid. */
+  grid: Grid;
   /** Revealed squares, as row-major indexes (row × columns + column). */
   revealed: number[];
   tokens: Token[];
@@ -59,31 +62,12 @@ export interface PublicMap {
   activeTokenId: string | null;
 }
 
-export interface Rect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-export const columns = (m: MapScene) => Math.max(1, Math.ceil((m.width - m.grid.offsetX) / m.grid.size));
-export const rows = (m: MapScene) => Math.max(1, Math.ceil((m.height - m.grid.offsetY) / m.grid.size));
 export const tileColumns = (m: Pick<MapScene, "width">) => Math.ceil(m.width / TILE_SIZE);
 export const tileRows = (m: Pick<MapScene, "height">) => Math.ceil(m.height / TILE_SIZE);
 const cellIndex = (m: MapScene, x: number, y: number) => y * columns(m) + x;
 
 export function isRevealed(m: MapScene, x: number, y: number): boolean {
   return m.revealed.includes(cellIndex(m, x, y));
-}
-
-/** The pixel rectangle of a square. The edge squares include the margin before the grid offset. */
-export function cellRect(m: MapScene, x: number, y: number): Rect {
-  const { size, offsetX, offsetY } = m.grid;
-  const left = x === 0 ? 0 : offsetX + x * size;
-  const top = y === 0 ? 0 : offsetY + y * size;
-  const right = Math.min(m.width, offsetX + (x + 1) * size);
-  const bottom = Math.min(m.height, offsetY + (y + 1) * size);
-  return { x: left, y: top, w: Math.max(0, right - left), h: Math.max(0, bottom - top) };
 }
 
 const overlap = (a: Rect, b: Rect): Rect | null => {
@@ -95,22 +79,23 @@ const overlap = (a: Rect, b: Rect): Rect | null => {
 };
 
 /**
- * For one tile: whether it may be sent at all, and the rectangles (in tile pixels) to paint over first.
- * `version` lists the revealed squares inside the tile, so a reveal change means a fresh tile.
+ * For one tile: whether it may be sent at all, and the outlines (in tile pixels) of the revealed cells in it.
+ * Everything else in the tile is painted over before it is sent, including any margin outside every cell.
+ * `version` lists the revealed cells inside the tile, so a reveal change means a fresh tile.
  */
-export function tilePlan(m: MapScene, tx: number, ty: number): { send: boolean; cover: Rect[]; version: string } {
+export function tilePlan(m: MapScene, tx: number, ty: number): { send: boolean; keep: Point[][]; version: string } {
   const tile: Rect = { x: tx * TILE_SIZE, y: ty * TILE_SIZE, w: Math.min(TILE_SIZE, m.width - tx * TILE_SIZE), h: Math.min(TILE_SIZE, m.height - ty * TILE_SIZE) };
-  const cover: Rect[] = [];
+  const keep: Point[][] = [];
   const open: number[] = [];
+  const shown = new Set(m.revealed);
   for (let y = 0; y < rows(m); y++) {
     for (let x = 0; x < columns(m); x++) {
-      const part = overlap(cellRect(m, x, y), tile);
-      if (!part) continue;
-      if (isRevealed(m, x, y)) open.push(cellIndex(m, x, y));
-      else cover.push({ x: part.x - tile.x, y: part.y - tile.y, w: part.w, h: part.h });
+      if (!shown.has(cellIndex(m, x, y)) || !overlap(cellBounds(m, x, y), tile)) continue;
+      open.push(cellIndex(m, x, y));
+      keep.push(cellPolygon(m, x, y).map((p) => ({ x: p.x - tile.x, y: p.y - tile.y })));
     }
   }
-  return { send: open.length > 0, cover, version: open.join(".") };
+  return { send: open.length > 0, keep, version: open.join(".") };
 }
 
 export function publicMap(m: MapScene, viewer: string | null, activeTokenId: string | null = null): PublicMap {
@@ -159,10 +144,19 @@ export function setActiveMap(c: HostCampaign, id: string | null): HostCampaign {
   return touch({ ...c, activeMapId: id });
 }
 
-export function setGrid(c: HostCampaign, id: string, grid: MapScene["grid"]): HostCampaign {
+export function setGrid(c: HostCampaign, id: string, grid: Grid): HostCampaign {
   const size = Math.max(16, Math.min(400, Math.round(grid.size)));
-  // Changing the grid changes what every square covers, so the fog starts over.
-  return withMap(c, id, (m) => ({ ...m, grid: { size, offsetX: Math.max(0, Math.round(grid.offsetX)) % size, offsetY: Math.max(0, Math.round(grid.offsetY)) % size }, revealed: [], walls: [], doors: [] }));
+  const kind: GridKind = GRID_KINDS.includes(grid.kind as GridKind) ? (grid.kind as GridKind) : "square";
+  // A hex grid's pattern repeats every two cells across its shifted direction.
+  const period = kind === "square" ? size : size * 2;
+  const offset = (n: number) => Math.max(0, Math.round(n)) % period;
+  // Changing the grid changes what every cell covers, so the fog, walls and doors start over; tokens are kept
+  // on cells that still exist.
+  return withMap(c, id, (m) => {
+    const next = { ...m, grid: { size, offsetX: offset(grid.offsetX), offsetY: offset(grid.offsetY), kind }, revealed: [], walls: [], doors: [] };
+    const fit = (t: Token) => ({ ...t, x: Math.min(t.x, columns(next) - 1), y: Math.min(t.y, rows(next) - 1) });
+    return { ...next, tokens: next.tokens.map(fit) };
+  });
 }
 
 export function setRevealed(c: HostCampaign, id: string, cells: { x: number; y: number }[], revealed: boolean): HostCampaign {
@@ -208,12 +202,13 @@ export function activeMap(c: HostCampaign): MapScene | null {
 
 // ---------- walls, doors, measuring and exploration ----------
 
-/** Feet per square, and the SRD rule that a diagonal step costs the same as a straight one. */
+/** Feet per cell. On squares a diagonal step costs the same as a straight one (the SRD's rule). */
 export const FEET_PER_SQUARE = 5;
 
-/** Distance in feet between two squares, counting diagonal steps as one square. */
-export function distanceFeet(a: { x: number; y: number }, b: { x: number; y: number }): number {
-  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) * FEET_PER_SQUARE;
+/** Distance in feet between two cells. Without a map, the cells are squares. */
+export function distanceFeet(a: Point, b: Point, m?: Pick<MapScene, "width" | "height" | "grid">): number {
+  const steps = m ? cellDistance(m, a, b) : Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+  return steps * FEET_PER_SQUARE;
 }
 
 const blocks = (m: MapScene, i: number) => (m.walls ?? []).includes(i) || (m.doors ?? []).some((d) => d.index === i && !d.open);
@@ -224,6 +219,18 @@ const blocks = (m: MapScene, i: number) => (m.walls ?? []).includes(i) || (m.doo
  */
 export function canSee(m: MapScene, from: { x: number; y: number }, to: { x: number; y: number }): boolean {
   const cols = columns(m);
+  if ((m.grid.kind ?? "square") !== "square") {
+    // Hexes: sample the line between the two centres in pixels, four samples per cell crossed.
+    const a = cellCentre(m, from.x, from.y);
+    const b = cellCentre(m, to.x, to.y);
+    const n = Math.max(1, cellDistance(m, from, to) * 4);
+    for (let s = 1; s < n; s++) {
+      const c = cellAt(m, a.x + ((b.x - a.x) * s) / n, a.y + ((b.y - a.y) * s) / n);
+      if ((c.x === from.x && c.y === from.y) || (c.x === to.x && c.y === to.y)) continue;
+      if (blocks(m, c.y * cols + c.x)) return false;
+    }
+    return true;
+  }
   const steps = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y)) * 4;
   for (let s = 1; s < steps; s++) {
     const t = s / steps;
@@ -243,7 +250,7 @@ export function partyVision(m: MapScene): number[] {
   for (const t of m.tokens.filter((x) => x.memberId)) {
     for (let y = 0; y < rows(m); y++) {
       for (let x = 0; x < cols; x++) {
-        if (radius && Math.max(Math.abs(x - t.x), Math.abs(y - t.y)) > radius) continue;
+        if (radius && cellDistance(m, t, { x, y }) > radius) continue;
         if (canSee(m, t, { x, y })) out.add(y * cols + x);
       }
     }
@@ -303,6 +310,6 @@ export function togglePlayerDoor(c: HostCampaign, memberId: string, x: number, y
   const i = y * columns(m) + x;
   const door = (m.doors ?? []).find((d) => d.index === i);
   const own = m.tokens.find((t) => t.memberId === memberId);
-  if (!door || !own || !isRevealed(m, x, y) || Math.max(Math.abs(own.x - x), Math.abs(own.y - y)) > 1) return null;
+  if (!door || !own || !isRevealed(m, x, y) || cellDistance(m, own, { x, y }) > 1) return null;
   return explore(withMap(c, m.id, (s) => ({ ...s, doors: (s.doors ?? []).map((d) => (d.index === i ? { ...d, open: !d.open } : d)) })), m.id);
 }

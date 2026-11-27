@@ -106,7 +106,7 @@ export function useHost(initial: StudioCampaign) {
         if (!data) {
           const original = source.get(`${t.tx}:${t.ty}`);
           if (!original) continue;
-          data = await coverTile(original, tilePlan(map, t.tx, t.ty).cover);
+          data = await coverTile(original, tilePlan(map, t.tx, t.ty).keep);
           covered.current.set(key, data);
         }
         const tile = { t: "tile" as const, v: PROTOCOL_VERSION, mapId: map.id, tx: t.tx, ty: t.ty, version: t.version, data };
