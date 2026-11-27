@@ -446,6 +446,35 @@ try {
   await alice.page.mouse.click(ab.x + 250 * ak2, ab.y + 150 * ak2);
   await eventually(async () => (await dmDoors.count()) === openBefore + 1, "Alice opens it from her sheet and the DM's map shows it open");
 
+  // ----- A dark map: the party sees only what light or darkvision reaches -----
+  await dm.page.getByRole("button", { name: "Reveal all" }).click();
+  await dm.page.getByLabel("Creature token").fill("Rat");
+  await dm.page.getByRole("checkbox", { name: "Hidden" }).uncheck();
+  await dm.page.getByRole("button", { name: "Add token" }).click();
+  await openTable(alice.page);
+  await eventually(async () => (await aliceMap.getByRole("button", { name: "Rat" }).count()) === 1, "a rat scurries onto the map");
+  const tokensInLight = await aliceMap.locator(".token").count();
+  await dm.page.getByRole("checkbox", { name: "This map is dark" }).check();
+  await eventually(async () => (await aliceMap.locator(".map-overlay .darkness").count()) === 1, "on a dark map, Alice's map dims what Wren can't see");
+  await eventually(async () => (await aliceMap.getByRole("button", { name: "Rat" }).count()) === 0, "and no longer shows the rat in the dark");
+  await shot(alice.page, "alice-dark");
+  await dm.page.getByLabel("Light Wren Ashdown carries").selectOption({ label: "Lantern, 60 ft" });
+  await eventually(async () => (await aliceMap.locator(".token").count()) === tokensInLight, "Wren lights a lantern and Alice sees the rat again");
+  await dm.page.getByRole("button", { name: "Lights", exact: true }).click();
+  await dm.page.mouse.click(...(await at(950, 450)));
+  const dmMap = dm.page.getByRole("img", { name: "docks, as you see it" });
+  check((await dmMap.locator(".light-flame").count()) === 1, "the DM places a light on the map");
+  await shot(dm.page, "dm-dark-map");
+  check((await aliceMap.locator(".light-flame").count()) === 0, "players never get the light's marker");
+  await dm.page.mouse.click(...(await at(950, 450)));
+  check((await dmMap.locator(".light-flame").count()) === 0, "tapping it again takes it away");
+  await dm.page.getByLabel("Light Wren Ashdown carries").selectOption({ label: "No light" });
+  await dm.page.getByRole("checkbox", { name: "This map is dark" }).uncheck();
+  await eventually(async () => (await aliceMap.locator(".map-overlay .darkness").count()) === 0, "lighting the map again clears the dark from Alice's map");
+  await dm.page.getByRole("button", { name: "Move tokens" }).click();
+  await dm.page.getByRole("button", { name: "Remove Rat" }).click();
+  await openSheet(alice.page);
+
   // Turns light up the acting token.
   await openSheet(alice.page);
   await dmTo(dm.page, "play");

@@ -1387,6 +1387,20 @@ details.feature[open] {
 .map-overlay .fog {
   fill: rgba(18, 13, 20, 0.62);
 }
+/* A dark map: squares the party can't see right now. What they saw before shows through, dimmed. */
+.map-overlay .darkness {
+  fill: rgba(8, 5, 12, 0.58);
+}
+.map-overlay .light-reach {
+  fill: rgba(240, 180, 80, 0.08);
+  stroke: rgba(240, 180, 80, 0.75);
+  stroke-dasharray: 6 6;
+}
+.map-overlay .light-flame {
+  fill: #f0b450;
+  stroke: #241a26;
+  stroke-width: 2;
+}
 .map-overlay .paint-reveal {
   fill: rgba(127, 166, 107, 0.45);
 }
@@ -2293,4 +2307,10 @@ body,
   align-items: center;
   gap: 12px;
   margin-top: 24px;
+}
+.input.input-small {
+  width: auto;
+  min-height: 36px;
+  padding: 4px 8px;
+  font-size: var(--t-sm);
 }

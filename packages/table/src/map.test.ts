@@ -229,3 +229,68 @@ describe("pins", () => {
   });
 });
 
+
+describe("darkness and light", async () => {
+  const { exportCampaign, importCampaign, litCells, partyVision, setDark, setExplore, setTokenSight, setWalls, toggleLight } = await import("./index.js");
+  const cols = 11;
+  // A dark map, exploring with no sight limit: Wren at 0,0, the ogre at 8,1.
+  const dark = () => setExplore(setDark(campaign(), "docks", true), "docks", { on: true, radius: 0 });
+  const m = (c: HostCampaign) => c.maps![0]!;
+  const seenCols = (c: HostCampaign) => [...new Set(partyVision(m(c)).map((i) => i % cols))].sort((a, b) => a - b);
+
+  it("in the dark, the party sees nothing it has no light or darkvision for", () => {
+    const c = dark();
+    // Only the square Wren stands on.
+    expect(partyVision(m(c))).toEqual([0]);
+    expect(m(c).revealed).toEqual([0]);
+  });
+
+  it("a torch the token carries lights its reach, and the party explores what it lights", () => {
+    const c = setTokenSight(dark(), "docks", "wren", { light: 2 });
+    expect(seenCols(c)).toEqual([0, 1, 2]);
+    expect(m(c).revealed).toContain(2 * cols + 2);
+    expect(m(c).revealed).not.toContain(3);
+  });
+
+  it("darkvision sees without light, up to its reach", () => {
+    const c = setTokenSight(dark(), "docks", "wren", { darkvision: 3 });
+    expect(seenCols(c)).toEqual([0, 1, 2, 3]);
+    expect(setTokenSight(c, "docks", "wren", { darkvision: 0 }).maps![0]!.tokens[0]).not.toHaveProperty("darkvision");
+  });
+
+  it("a light on the map shows what it lights, far from the party, but not behind walls", () => {
+    let c = toggleLight(dark(), "docks", { id: "brazier", x: 8, y: 3, radius: 1 });
+    expect(litCells(m(c)).has(3 * cols + 9)).toBe(true);
+    expect(partyVision(m(c))).toContain(3 * cols + 8);
+    c = toggleLight(c, "docks", { id: "other", x: 8, y: 3, radius: 1 }); // tapping it again takes it away
+    expect(m(c).lights).toEqual([]);
+    // A wall between the light and a square keeps that square dark.
+    c = setWalls(dark(), "docks", [{ x: 7, y: 3 }], true);
+    c = toggleLight(c, "docks", { id: "brazier", x: 8, y: 3, radius: 3 });
+    expect(litCells(m(c)).has(3 * cols + 6)).toBe(false);
+    expect(litCells(m(c)).has(3 * cols + 10)).toBe(true);
+  });
+
+  it("players get remembered squares dimmed, and no creature standing in the dark", () => {
+    let c = setTokenSight(dark(), "docks", "wren", { light: 30 }); // everything seen once
+    c = { ...c, ...setDark(c, "docks", true) };
+    expect(publicMap(m(c), "alice").tokens.map((t) => t.id)).toEqual(["wren", "ogre"]);
+    c = setTokenSight(c, "docks", "wren", { light: 2 }); // the torch burns low
+    const view = publicMap(m(c), "alice");
+    expect(view.seen).toContain(0);
+    expect(view.seen).not.toContain(1 * cols + 8);
+    expect(view.tiles.length).toBe(6); // the map they've seen is still theirs
+    expect(view.tokens.map((t) => t.id)).toEqual(["wren"]);
+    expect(JSON.stringify(view)).not.toContain("lights");
+    expect(publicMap(m(setDark(c, "docks", false)), "alice").seen).toBeNull();
+  });
+
+  it("survive a backup", () => {
+    let c = toggleLight(setTokenSight(dark(), "docks", "wren", { light: 4, darkvision: 12 }), "docks", { id: "brazier", x: 8, y: 3, radius: 2 });
+    const raw = JSON.parse(JSON.stringify(exportCampaign(c)));
+    raw.campaign.maps[0].lights.push({ id: "bad", x: 1, y: 1, radius: 99 });
+    c = importCampaign(raw, content, { room: "r2", key: "k2" }).campaign;
+    expect(m(c)).toMatchObject({ dark: true, lights: [{ id: "brazier", x: 8, y: 3, radius: 2 }] });
+    expect(m(c).tokens[0]).toMatchObject({ light: 4, darkvision: 12 });
+  });
+});

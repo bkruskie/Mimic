@@ -8,7 +8,7 @@ import { readSessions } from "./session.js";
 import { readScenes } from "./scenes.js";
 import { GRID_KINDS, type GridKind } from "./grid.js";
 import { HANDOUT_MAX_LENGTH, isImageData, type Handout, type HostCampaign, type Member } from "./host.js";
-import { PIN_LAYERS, PIN_TEXT_MAX, type MapScene, type Pin, type Token } from "./map.js";
+import { LIGHT_MAX, PIN_LAYERS, PIN_TEXT_MAX, type Light, type MapScene, type Pin, type Token } from "./map.js";
 import { QUEST_STATUSES, WORLD_KINDS, WORLD_TEXT_MAX, type WorldEntry } from "./world.js";
 import type { SharedRoll } from "./protocol.js";
 
@@ -58,14 +58,23 @@ function readMap(m: unknown): MapScene | null {
     height: m.height,
     grid: { size: g.size, offsetX: g.offsetX, offsetY: g.offsetY, kind },
     revealed: (Array.isArray(m.revealed) ? m.revealed : []).filter((i): i is number => Number.isInteger(i) && (i as number) >= 0),
-    tokens: tokens.map((t) => ({ id: t.id, name: t.name.slice(0, 40), x: t.x, y: t.y, memberId: typeof t.memberId === "string" ? t.memberId : null, hidden: t.hidden === true, color: /^#[0-9a-f]{6}$/i.test(t.color) ? t.color : "#C9973F" })),
+    tokens: tokens.map((t) => ({ id: t.id, name: t.name.slice(0, 40), x: t.x, y: t.y, memberId: typeof t.memberId === "string" ? t.memberId : null, hidden: t.hidden === true, color: /^#[0-9a-f]{6}$/i.test(t.color) ? t.color : "#C9973F", ...(num(t.light, 1, LIGHT_MAX) ? { light: Math.round(t.light) } : {}), ...(num(t.darkvision, 1, LIGHT_MAX) ? { darkvision: Math.round(t.darkvision) } : {}) })),
     walls: (Array.isArray(m.walls) ? m.walls : []).filter((i): i is number => Number.isInteger(i) && (i as number) >= 0),
     doors: (Array.isArray(m.doors) ? m.doors : []).filter((d): d is { index: number; open: boolean } => isRecord(d) && Number.isInteger(d.index) && typeof d.open === "boolean"),
     explore: isRecord(m.explore) && typeof m.explore.on === "boolean" && num(m.explore.radius, 0, 60) ? { on: m.explore.on, radius: m.explore.radius } : { on: false, radius: 0 },
     pins: (Array.isArray(m.pins) ? m.pins : [])
       .filter((p): p is Pin => isRecord(p) && typeof p.id === "string" && typeof p.label === "string" && p.label.trim() !== "" && Number.isInteger(p.x) && Number.isInteger(p.y) && (PIN_LAYERS as readonly unknown[]).includes(p.layer))
       .map((p) => ({ id: p.id, x: p.x, y: p.y, label: p.label.slice(0, PIN_TEXT_MAX), layer: p.layer })),
+    ...(m.dark === true ? { dark: true } : {}),
+    ...readLights(m.lights),
   };
+}
+
+function readLights(raw: unknown): { lights?: Light[] } {
+  const lights = (Array.isArray(raw) ? raw : [])
+    .filter((l): l is Light => isRecord(l) && typeof l.id === "string" && Number.isInteger(l.x) && Number.isInteger(l.y) && (l.x as number) >= 0 && (l.y as number) >= 0 && num(l.radius, 1, LIGHT_MAX))
+    .map((l) => ({ id: l.id, x: l.x, y: l.y, radius: Math.round(l.radius) }));
+  return lights.length ? { lights } : {};
 }
 
 const isRecord = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);

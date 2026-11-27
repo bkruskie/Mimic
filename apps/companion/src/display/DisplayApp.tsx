@@ -51,6 +51,7 @@ export function DisplayApp() {
             tokens={view.map.tokens}
             doors={view.map.doors ?? []}
             pins={view.map.pins ?? []}
+            seen={view.map.seen ?? undefined}
             activeTokenId={view.map.activeTokenId ?? null}
             tiles={view.map.tiles.flatMap((t) => {
               const url = tiles.get(`${view.map!.id}:${t.tx}:${t.ty}:${t.version}`);
