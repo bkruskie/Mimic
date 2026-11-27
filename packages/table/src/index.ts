@@ -9,3 +9,4 @@ export * from "./map.js";
 export { cellAt, cellBounds, cellCentre, cellDistance, cellPolygon, gridKind, gridPath, isGridless, polygonPath, tokenCell, tokenSpotAt, GRID_KINDS, type Grid, type GridKind, type GridMap, type Point, type Rect } from "./grid.js";
 export * from "./world.js";
 export * from "./lan.js";
+export * from "./encounters.js";

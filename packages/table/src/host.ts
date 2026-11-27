@@ -5,6 +5,7 @@
 import { CharacterImportError, derive, importCharacter, type Character, type Content } from "@mimicbox/ruleset-dnd5e";
 import { actingTokenId, publicCombat, setMemberInitiative, type Combat } from "./combat.js";
 import { activeMap, movePlayerToken, publicMap, togglePlayerDoor, type MapScene } from "./map.js";
+import type { Encounter } from "./encounters.js";
 import { publicWorld, type WorldEntry } from "./world.js";
 import {
   PROTOCOL_VERSION,
@@ -67,6 +68,8 @@ export interface HostCampaign {
   combat?: Combat | null;
   /** Places, people, factions, quests and lore. */
   world?: WorldEntry[];
+  /** Fights the DM prepared ahead. DM-only: never sent to players. */
+  encounters?: Encounter[];
   /** Battle maps, and the one players see. */
   maps?: MapScene[];
   activeMapId?: string | null;

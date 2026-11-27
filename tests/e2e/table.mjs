@@ -86,7 +86,7 @@ async function dmTo(page, place) {
   const switcher = page.getByRole("group", { name: "Mode" }).getByRole("button", { name: mode });
   if ((await switcher.getAttribute("aria-pressed")) !== "true") await switcher.click();
   if (place === "play") return;
-  const names = { world: "World", maps: "Maps", handouts: "Handouts", players: "Players", campaign: "Campaign" };
+  const names = { world: "World", maps: "Maps", encounters: "Encounters", handouts: "Handouts", players: "Players", campaign: "Campaign" };
   const tab = page.getByRole("navigation", { name: "Prepare" }).getByRole("button", { name: names[place], exact: true });
   if ((await tab.getAttribute("aria-pressed")) !== "true") await tab.click();
 }
@@ -540,6 +540,37 @@ try {
   check(!/At The Sunken Bell/.test(await alice.page.locator(".sheet-top").innerText()), "Alice's replaced link no longer connects");
   await joinGame(alice.page, newInvite, "Alice");
   await eventually(async () => /At The Sunken Bell/.test(await alice.page.locator(".sheet-top").innerText()), "Alice rejoins with the new link");
+
+  // ----- Encounters: prepared ahead, run in one tap -----
+  await dmTo(dm.page, "encounters");
+  await dm.page.getByRole("button", { name: "New encounter" }).click();
+  const encounterForm = dm.page.getByRole("region", { name: "Encounter" });
+  await encounterForm.getByLabel("Encounter name").fill("Docks ambush");
+  await encounterForm.getByLabel("Map").selectOption({ label: "docks" });
+  await encounterForm.locator("summary", { hasText: "Add from the bestiary" }).click();
+  await encounterForm.getByLabel("How many", { exact: true }).fill("2");
+  await encounterForm.getByLabel("Search the SRD monsters").fill("goblin war");
+  await encounterForm.getByRole("button", { name: "Add 2 Goblin Warrior" }).click();
+  await encounterForm.getByLabel("How many", { exact: true }).fill("1");
+  await encounterForm.getByLabel("Search the SRD monsters").fill("goblin boss");
+  await encounterForm.getByRole("button", { name: "Add Goblin Boss" }).click();
+  const bossRow = encounterForm.getByRole("list", { name: "Creatures in this encounter" }).getByRole("listitem").filter({ hasText: "Goblin Boss" });
+  await bossRow.getByRole("button", { name: "Seen" }).click();
+  check(/Total 300 XP/.test(await encounterForm.innerText()), "the DM prepares an encounter from the bestiary: two Goblin Warriors and a hidden Goblin Boss, 300 XP");
+  await shot(dm.page, "dm-encounter");
+  await encounterForm.getByRole("button", { name: "Save encounter" }).click();
+  check(/2 Goblin Warrior, 1 Goblin Boss \(hidden\)/.test(await dm.page.getByRole("region", { name: "Encounters" }).innerText()), "and saves it for later");
+  await dmTo(dm.page, "play");
+  await dm.page.getByRole("button", { name: "Run Docks ambush" }).click();
+  const order = dm.page.getByRole("list", { name: "Initiative order" });
+  await eventually(async () => /Goblin Boss/.test(await order.innerText()) && (await order.getByText(/^Goblin Warrior \d+$/).count()) >= 2, "Run starts the fight with every creature in the turn order");
+  check((await dm.page.getByRole("img", { name: "docks, as you see it" }).getByRole("button", { name: /Goblin Boss/ }).count()) === 1, "and puts their tokens on the encounter's map");
+  await eventually(async () => (await alice.page.locator(".combat-banner").count()) === 1, "Alice's sheet shows the fight");
+  await openTable(alice.page);
+  check(!/Goblin Boss/.test(await alice.page.locator("body").innerText()), "but never the hidden Goblin Boss, in the turn order or on the map");
+  await openSheet(alice.page);
+  await dm.page.getByRole("region", { name: "Combat" }).getByRole("button", { name: "End combat" }).click();
+  await dm.page.getByRole("button", { name: "End combat" }).first().click();
 
   // ----- A reconnect doesn't repeat anything -----
   await dmTo(dm.page, "play");

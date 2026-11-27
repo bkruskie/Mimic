@@ -55,18 +55,10 @@ const ABILITY_NAMES = [
 ] as const;
 const signed = (n: number) => (n >= 0 ? `+${n}` : `−${Math.abs(n)}`);
 
-/**
- * Search the bestiary and add one or more of a monster to the fight. Each gets its own number, initiative rolled
- * from its bonus, and hit points at the average or rolled from the stat block's formula.
- */
-export function BestiaryAdd({ existing, canPlace, onAdd }: { existing: string[]; canPlace: boolean; onAdd: (list: NewCombatant[], placeOnMap: boolean) => void }) {
-  const [open, setOpen] = useState(false);
+/** Searching the bestiary: a box and up to eight matches, each with a button that calls `onPick`. */
+export function MonsterSearch({ open, count, onPick }: { open: boolean; count: number; onPick: (m: MonsterDef) => void }) {
   const monsters = useMonsters(open);
   const [query, setQuery] = useState("");
-  const [count, setCount] = useState("1");
-  const [rolledHp, setRolledHp] = useState(false);
-  const [hidden, setHidden] = useState(false);
-  const [place, setPlace] = useState(true);
   const matches = useMemo(() => {
     if (!Array.isArray(monsters)) return [];
     const q = query.trim().toLowerCase();
@@ -76,17 +68,69 @@ export function BestiaryAdd({ existing, canPlace, onAdd }: { existing: string[];
       .sort((a, b) => (q ? Number(!a.name.toLowerCase().startsWith(q)) - Number(!b.name.toLowerCase().startsWith(q)) : 0) || crValue(a.cr) - crValue(b.cr) || a.name.localeCompare(b.name))
       .slice(0, 8);
   }, [monsters, query]);
+  return (
+    <>
+      <label className="field" style={{ flex: 1, minWidth: 160 }}>
+        <span>Search the SRD monsters</span>
+        <input className="input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Goblin, dragon, undead…" />
+      </label>
+      {monsters === "unavailable" ? (
+        <p className="notice small">{UNAVAILABLE}</p>
+      ) : !monsters ? (
+        <p className="muted small">Loading the bestiary…</p>
+      ) : matches.length === 0 ? (
+        <p className="muted small">No SRD monster matches "{query}". Add it as your own creature instead.</p>
+      ) : (
+        <ul className="rows" aria-label="Monsters">
+          {matches.map((m) => (
+            <li key={m.id} className="resource spread">
+              <span>
+                {m.name}
+                <br />
+                <span className="muted small">
+                  CR {m.cr}, AC {m.ac}, HP {m.hp.average}. {m.size} {m.type}
+                </span>
+              </span>
+              <button
+                type="button"
+                className="btn"
+                aria-label={`Add ${count === 1 ? "" : `${count} `}${m.name}`}
+                onClick={() => {
+                  onPick(m);
+                  setQuery("");
+                }}
+              >
+                Add{count > 1 ? ` ${count}` : ""}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
+
+/**
+ * Search the bestiary and add one or more of a monster to the fight. Each gets its own number, initiative rolled
+ * from its bonus, and hit points at the average or rolled from the stat block's formula.
+ */
+export function BestiaryAdd({ existing, canPlace, onAdd }: { existing: string[]; canPlace: boolean; onAdd: (list: NewCombatant[], placeOnMap: boolean) => void }) {
+  const [open, setOpen] = useState(false);
+  const [count, setCount] = useState("1");
+  const [rolledHp, setRolledHp] = useState(false);
+  const [hidden, setHidden] = useState(false);
+  const [place, setPlace] = useState(true);
   const n = Math.max(1, Math.min(20, Number.parseInt(count, 10) || 1));
 
   const add = (m: MonsterDef) => {
     // Number them after any of the same monster already in the fight: Goblin Warrior 3, 4…
     const taken = existing.filter((x) => x === m.name || x.startsWith(`${m.name} `)).length;
     const list: NewCombatant[] = Array.from({ length: n }, (_, i) => {
-      const hp = rolledHp ? Math.max(1, rollDice(m.hp.formula.replace(/\s+/g, "")).total) : m.hp.average;
+      const hp = rolledHp ? rollHp(m.hp.formula, m.hp.average) : m.hp.average;
       return {
         id: newId(),
         name: n === 1 && taken === 0 ? m.name : `${m.name} ${taken + i + 1}`,
-        initiative: rollDice(`1d20${m.initiative.bonus >= 0 ? "+" : ""}${m.initiative.bonus}`).total,
+        initiative: rollInitiative(m.initiative.bonus),
         hidden,
         hp: { current: hp, max: hp },
         monsterId: m.id,
@@ -94,7 +138,6 @@ export function BestiaryAdd({ existing, canPlace, onAdd }: { existing: string[];
       };
     });
     onAdd(list, canPlace && place);
-    setQuery("");
   };
 
   return (
@@ -102,58 +145,43 @@ export function BestiaryAdd({ existing, canPlace, onAdd }: { existing: string[];
       <summary className="btn">Add monsters</summary>
       <div className="stack" style={{ marginTop: 8 }}>
         <div className="row" style={{ alignItems: "end" }}>
-          <label className="field" style={{ flex: 1, minWidth: 160 }}>
-            <span>Search the SRD monsters</span>
-            <input className="input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Goblin, dragon, undead…" />
-          </label>
           <label className="field" style={{ width: 80 }}>
             <span>How many</span>
             <input className="input" inputMode="numeric" value={count} onChange={(e) => setCount(e.target.value)} />
           </label>
-        </div>
-        <div className="row" style={{ gap: 6 }}>
-          <button type="button" className="chip" aria-pressed={!rolledHp} onClick={() => setRolledHp(false)}>
-            Average HP
-          </button>
-          <button type="button" className="chip" aria-pressed={rolledHp} onClick={() => setRolledHp(true)}>
-            Roll HP
-          </button>
-          <button type="button" className="chip" aria-pressed={hidden} onClick={() => setHidden(!hidden)}>
-            Hidden
-          </button>
-          {canPlace && (
-            <button type="button" className="chip" aria-pressed={place} onClick={() => setPlace(!place)}>
-              Place on the map
+          <div className="row" style={{ gap: 6 }}>
+            <button type="button" className="chip" aria-pressed={!rolledHp} onClick={() => setRolledHp(false)}>
+              Average HP
             </button>
-          )}
+            <button type="button" className="chip" aria-pressed={rolledHp} onClick={() => setRolledHp(true)}>
+              Roll HP
+            </button>
+            <button type="button" className="chip" aria-pressed={hidden} onClick={() => setHidden(!hidden)}>
+              Hidden
+            </button>
+            {canPlace && (
+              <button type="button" className="chip" aria-pressed={place} onClick={() => setPlace(!place)}>
+                Place on the map
+              </button>
+            )}
+          </div>
         </div>
-        {monsters === "unavailable" ? (
-          <p className="notice small">{UNAVAILABLE}</p>
-        ) : !monsters ? (
-          <p className="muted small">Loading the bestiary…</p>
-        ) : matches.length === 0 ? (
-          <p className="muted small">No SRD monster matches "{query}". Add it by hand below.</p>
-        ) : (
-          <ul className="rows" aria-label="Monsters">
-            {matches.map((m) => (
-              <li key={m.id} className="resource spread">
-                <span>
-                  {m.name}
-                  <br />
-                  <span className="muted small">
-                    CR {m.cr}, AC {m.ac}, HP {m.hp.average}. {m.size} {m.type}
-                  </span>
-                </span>
-                <button type="button" className="btn" aria-label={`Add ${n === 1 ? "" : `${n} `}${m.name}`} onClick={() => add(m)}>
-                  Add{n > 1 ? ` ${n}` : ""}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <MonsterSearch open={open} count={n} onPick={add} />
       </div>
     </details>
   );
+}
+
+/** Initiative for a creature: a d20 plus its bonus. */
+export const rollInitiative = (bonus: number) => rollDice(`1d20${bonus >= 0 ? "+" : ""}${bonus}`).total;
+/** Hit points rolled from a stat block's formula ("3d6", "19d12 + 133"), or the average if it can't be read. */
+export function rollHp(formula: string | null, average: number): number {
+  if (!formula) return average;
+  try {
+    return Math.max(1, rollDice(formula.replace(/\s+/g, "")).total);
+  } catch {
+    return average;
+  }
 }
 
 /** A monster's stat block. Attack bonuses and damage rolls are buttons that roll in secret, labelled with `who`. */
