@@ -80,6 +80,18 @@ async function bringCharacter(page, fixture) {
   await page.getByText(/^Imported /).waitFor();
 }
 
+/** The player's table view (the map), opened from the sheet's Map chip. */
+async function openTable(page) {
+  if ((await page.locator(".table-view").count()) === 0) await page.getByRole("button", { name: "Map", exact: true }).click();
+  await page.locator(".table-view").waitFor();
+}
+/** Back to the sheet from the table view, by the sheet's own tabs on a phone. */
+async function openSheet(page) {
+  if ((await page.locator(".table-view").count()) === 0) return;
+  await page.getByRole("navigation", { name: "Sheet sections" }).getByRole("button", { name: "Actions" }).click();
+  await page.locator(".table-view").waitFor({ state: "detached" });
+}
+
 async function joinGame(page, inviteUrl, playerName) {
   await page.goto(inviteUrl);
   await page.getByLabel("Your name at the table").fill(playerName);
@@ -247,8 +259,7 @@ try {
   await dm.page.getByRole("button", { name: "Show this map to players" }).click();
   await shot(dm.page, "dm-map");
 
-  await eventually(async () => (await alice.page.getByRole("button", { name: "Map", exact: true }).count()) > 0, "Alice's sheet offers the map");
-  await alice.page.getByRole("button", { name: "Map", exact: true }).click();
+  await openTable(alice.page);
   const aliceMap = alice.page.getByRole("img", { name: "docks, the parts you can see" });
   await eventually(async () => (await aliceMap.locator(".map-surface > img").count()) === 1, "Alice receives only the one tile with revealed squares");
   const pixel = async (x, y) =>
@@ -292,7 +303,7 @@ try {
   await alice.page.mouse.up();
   check((await alice.page.getByRole("status").filter({ hasText: "ft" }).innerText()) === "15 ft", "measuring three squares across and one down reads 15 ft");
   await alice.page.getByRole("button", { name: "Move my token" }).click();
-  await alice.page.keyboard.press("Escape");
+  await openSheet(alice.page);
   await eventually(async () => (await display.locator(".display-map .map-surface > img").count()) === 1, "the display shows the revealed part of the map");
   check((await display.getByRole("button", { name: /Spy/ }).count()) === 0, "without the hidden Spy");
   await shot(display, "display-map");
@@ -323,7 +334,7 @@ try {
   await dm.page.mouse.click(...(await at(850, 450))); // a square nobody has revealed
   const dmMapPins = dm.page.getByRole("img", { name: "docks, as you see it" }).locator(".pin");
   check((await dmMapPins.count()) === 3, "the DM places three pins: one only for themselves, two for players");
-  if ((await aliceMap.count()) === 0) await alice.page.getByRole("button", { name: "Map", exact: true }).click();
+  await openTable(alice.page);
   await eventually(async () => (await aliceMap.getByLabel("Pin: Way out").count()) === 1, "Alice sees the players' pin on a revealed square");
   check((await aliceMap.locator(".pin").count()) === 1, "but not the DM's trap, or the pin on a square she can't see");
   const pinBox = await aliceMap.getByLabel("Pin: Way out").boundingBox();
@@ -335,7 +346,25 @@ try {
   await dm.page.getByRole("button", { name: "Your pins" }).click();
   await shot(dm.page, "dm-pins");
   await shot(alice.page, "alice-pins");
-  await alice.page.keyboard.press("Escape");
+
+  // The table view uses the screen (docs/design.md): the map fills a phone in portrait, and on its side the map
+  // shares the screen with a side panel that folds away and is remembered.
+  const portraitBox = await alice.page.locator(".table-map .map-box").boundingBox();
+  const portraitSurface = await alice.page.locator(".table-map .map-surface").boundingBox();
+  check(portraitBox.width > 390 * 0.9 && portraitBox.height <= portraitSurface.height + 2, `in portrait the map takes the phone's width with no empty band below it (${Math.round(portraitBox.width)} by ${Math.round(portraitBox.height)} pixels)`);
+  check(/Wren Ashdown/.test(await alice.page.locator(".table-below").innerText()), "and the party fills the space under the map");
+  await alice.page.setViewportSize({ width: 844, height: 390 });
+  await alice.page.getByRole("complementary", { name: "Side panel" }).waitFor();
+  check((await alice.page.getByRole("navigation", { name: "Sheet sections" }).count()) === 0, "on its side, the sheet tabs give way to the map");
+  check(/Wren Ashdown/.test(await alice.page.getByRole("complementary", { name: "Side panel" }).innerText()), "and the party sits in a side panel beside it");
+  await shot(alice.page, "alice-landscape");
+  await alice.page.getByRole("button", { name: "Hide the side panel" }).click();
+  const foldedMap = await alice.page.locator(".table-map .map-box").boundingBox();
+  check(foldedMap.width > 844 * 0.9, `folding the panel gives the map the whole width (${Math.round(foldedMap.width)} of 844 pixels)`);
+  check((await alice.page.evaluate(() => JSON.parse(localStorage.getItem("mimicbox:table-layout") ?? "{}").open)) === false, "and the folded layout is remembered on the device");
+  await alice.page.getByRole("button", { name: "Show the side panel" }).click();
+  await alice.page.setViewportSize({ width: 390, height: 844 });
+  await openSheet(alice.page);
   await dm.page.getByRole("button", { name: "Draw walls" }).click();
   await drag([450, 50], [450, 550]);
   await dm.page.getByRole("button", { name: "Doors", exact: true }).click();
@@ -350,7 +379,7 @@ try {
   await eventually(async () => (await display.locator(".display-map .map-surface > img").count()) > 2, "and the newly seen tiles reach the table display");
 
   // A door next to Wren (she stands at column 1, row 0): Alice opens it from her sheet.
-  await alice.page.getByRole("button", { name: "Map", exact: true }).click();
+  await openTable(alice.page);
   await aliceMap.locator(".map-surface").waitFor();
   const aliceDoorsBefore = await aliceMap.locator(".map-overlay .door").count();
   await dm.page.mouse.click(...(await at(250, 150)));
@@ -364,7 +393,7 @@ try {
   await eventually(async () => (await dmDoors.count()) === openBefore + 1, "Alice opens it from her sheet and the DM's map shows it open");
 
   // Turns light up the acting token.
-  await alice.page.keyboard.press("Escape");
+  await openSheet(alice.page);
   await dm.page.getByRole("button", { name: "Reveal all" }).click();
   await dm.page.getByRole("button", { name: "Start combat" }).click();
   await dm.page.getByLabel("Creature", { exact: true }).fill("Ogre");
@@ -373,11 +402,11 @@ try {
   await dm.page.getByRole("button", { name: "First turn" }).click();
   await eventually(async () => (await display.getByRole("button", { name: "Ogre, acting now" }).count()) === 1, "the display lights up the Ogre's token on its turn");
   await dm.page.getByRole("button", { name: "Next turn" }).click();
-  await alice.page.getByRole("button", { name: "Map", exact: true }).click();
+  await openTable(alice.page);
   await eventually(async () => (await aliceMap.getByRole("button", { name: "Wren Ashdown, acting now" }).count()) === 1, "and Wren's on hers");
   await shot(alice.page, "alice-map-turn");
   await shot(display, "display-map-turn");
-  await alice.page.keyboard.press("Escape");
+  await openSheet(alice.page);
   await dm.page.getByRole("region", { name: "Combat" }).getByRole("button", { name: "End combat" }).click();
   await dm.page.getByRole("button", { name: "End combat" }).first().click();
 
@@ -624,7 +653,7 @@ try {
   await eventually(async () => /1 of \d+ hexes revealed/.test(await cabin.page.locator("body").innerText()), "the DM switches a map to hexes and reveals one hex");
   await cabin.page.getByRole("button", { name: "Show this map to players" }).click();
   await shot(cabin.page, "dm-hex-map");
-  await dana.page.getByRole("button", { name: "Map", exact: true }).click();
+  await openTable(dana.page);
   const danaMap = dana.page.getByRole("img", { name: "docks, the parts you can see" });
   await eventually(async () => (await danaMap.locator(".map-surface > img").count()) === 1, "Dana receives the one tile holding that hex");
   const danaPixel = (x, y) =>
@@ -642,7 +671,7 @@ try {
   check(!dark(await danaPixel(200, 144)), "the revealed hex keeps its pixels");
   check(dark(await danaPixel(305, 305)) && dark(await danaPixel(200, 40)) && dark(await danaPixel(110, 144)), "the red secret square, the hex above and the hex beside it are painted over");
   await shot(dana.page, "dana-hex-map");
-  await dana.page.keyboard.press("Escape");
+  await openSheet(dana.page);
 
   // ----- No grid: straight-line measuring -----
   await cabin.page.getByLabel("Grid shape").selectOption("none");
