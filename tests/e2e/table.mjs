@@ -374,6 +374,7 @@ try {
   check(/Wren Ashdown/.test(await alice.page.getByRole("complementary", { name: "Side panel" }).innerText()), "and the party sits in a side panel beside it");
   await shot(alice.page, "alice-landscape");
   await alice.page.getByRole("button", { name: "Hide the side panel" }).click();
+  await alice.page.getByRole("complementary", { name: "Side panel" }).waitFor({ state: "detached" });
   const foldedMap = await alice.page.locator(".table-map .map-box").boundingBox();
   check(foldedMap.width > 844 * 0.9, `folding the panel gives the map the whole width (${Math.round(foldedMap.width)} of 844 pixels)`);
   check((await alice.page.evaluate(() => JSON.parse(localStorage.getItem("mimicbox:table-layout") ?? "{}").open)) === false, "and the folded layout is remembered on the device");
@@ -529,7 +530,9 @@ try {
   // Play mode fits the DM's screen too: on a phone the map comes first and the play panel follows below it.
   const dmSize = dm.page.viewportSize();
   await dm.page.setViewportSize({ width: 390, height: 844 });
-  const dmPanel = dm.page.getByRole("complementary", { name: "Play panel" });
+  // Wait for the phone layout itself: the wide layout has a "Play panel" too, so waiting for that name alone
+  // measured before the page had switched (it failed on slower CI machines).
+  const dmPanel = dm.page.locator("aside.play-below");
   await dmPanel.waitFor();
   const dmMapBox = await dm.page.locator(".play-map").boundingBox();
   const dmPanelBox = await dmPanel.boundingBox();
