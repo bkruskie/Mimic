@@ -30,6 +30,7 @@ import {
   rows,
   saveToken,
   saveHandout,
+  setActiveMap,
   setHandoutRevealed,
   type Handout,
   type Member,
@@ -43,7 +44,8 @@ import { BackIcon } from "../lib/icons";
 import { scaleHandoutImage } from "../lib/mapImages";
 import { StoredImage } from "./pictures";
 import { deleteCampaign, deleteImage, getCampaign, listCampaigns, loadImage, loadTiles, relaysFromAddress, saveCampaign, saveImage, saveTiles, type StudioCampaign } from "./store";
-import { MapsPanel } from "./MapsPanel";
+import { MapEditor, MapsPanel } from "./MapsPanel";
+import { PanelToggle, SidePanel, usePanelLayout, useWideTable } from "../components/SidePanel";
 import { WorldPanel } from "./WorldPanel";
 import { useHost } from "./useHost";
 
@@ -190,182 +192,340 @@ function CampaignScreen({ initial }: { initial: StudioCampaign }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [importProblems] = useState(() => sessionStorage.getItem(`import-problems:${initial.id}`));
   const [imported] = useState(() => sessionStorage.getItem(`imported:${initial.id}`) === "1");
-  return (
+  // Prepare and Play (docs/design.md): prep tools never crowd the play screen. Both are remembered per campaign.
+  const [mode, setMode] = useStoredChoice<Mode>(`studio-mode:${initial.id}`, MODES, "prepare");
+  const [prep, setPrep] = useStoredChoice<PrepTab>(`studio-prep:${initial.id}`, PREP_TABS, members.length ? "world" : "players");
+  const wide = useWideTable();
+  const [panel, setPanel] = usePanelLayout(`mimicbox:play-layout:${initial.id}`, ["play"] as const, { open: true, width: 380, tab: "play" });
+  const activeMap = (campaign.maps ?? []).find((m) => m.id === campaign.activeMapId) ?? null;
+  const status =
+    host.status === "hosting"
+      ? members.length
+        ? `${here} of ${members.length} player${members.length === 1 ? "" : "s"} here`
+        : "Invite players"
+      : host.status === "starting"
+        ? "Starting to host…"
+        : host.status === "offline"
+          ? "Offline"
+          : "Can't reach the network";
+  const combatPanel = (
+    <CombatPanel
+      combat={campaign.combat ?? null}
+      canStart={members.some((m) => m.character)}
+      onStart={() => update((c) => ({ ...c, ...startCombat(c, newId) }))}
+      onEnd={() => update((c) => ({ ...c, ...endCombat(c) }))}
+      onNext={() => update((c) => ({ ...c, ...nextTurn(c) }))}
+      onPrevious={() => update((c) => ({ ...c, ...previousTurn(c) }))}
+      canPlace={Boolean(campaign.activeMapId)}
+      onAdd={(x, place) =>
+        update((c) => {
+          let next = c;
+          if (place && c.activeMapId) {
+            const map = (c.maps ?? []).find((m) => m.id === c.activeMapId)!;
+            const tokenId = newId();
+            next = { ...next, ...saveToken(next, map.id, { id: tokenId, name: x.name, x: Math.floor(columns(map) / 2), y: Math.floor(rows(map) / 2), memberId: null, hidden: x.hidden, color: "#D9476B" }) };
+            return { ...next, ...addCombatant(next, { ...x, tokenId }) };
+          }
+          return { ...next, ...addCombatant(next, x) };
+        })
+      }
+      onChange={(id, patch) => update((c) => ({ ...c, ...updateCombatant(c, id, patch) }))}
+      onRemove={(id) => update((c) => ({ ...c, ...removeCombatant(c, id) }))}
+    />
+  );
+  const partySection = (
+    <section className="section">
+      <h2>Party</h2>
+      {members.length === 0 && <p className="muted">No one has joined yet. Send your players the invite link.</p>}
+      {members.map((m) => (
+        <MemberCard
+          key={m.userId}
+          member={m}
+          here={host.connected.includes(m.userId)}
+          onEffect={(e) => host.sendEffect(m.userId, e)}
+          onRemove={() => update((c) => ({ ...c, ...removeMember(c, m.userId) }))}
+        />
+      ))}
+    </section>
+  );
+  const revealHandout = (id: string, revealed: boolean) => update((c) => ({ ...c, ...setHandoutRevealed(c, id, revealed) }));
+  const dice = (
     <>
-      <header className="sheet-top">
-        <div className="sheet-top-inner wide">
-          <div className="sheet-title">
-            <a className="btn btn-quiet" href="#/" aria-label="Back to your campaigns" style={{ padding: 6, minHeight: 40 }}>
-              <BackIcon width={22} height={22} />
-            </a>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <h1>{campaign.name}</h1>
-              <div className="muted small">
-                {host.status === "hosting"
-                  ? `Hosting. ${here} of ${members.length} player${members.length === 1 ? "" : "s"} here.`
-                  : host.status === "starting"
-                    ? "Starting to host…"
-                    : host.status === "offline"
-                      ? "You're offline. Keep preparing: everything saves on this computer. Players on this Wi-Fi can join with Add a player without internet."
-                    : "Couldn't reach the signalling networks. Check this device is online, then reload the page."}
+      <DmDice onRoll={(r) => update((c) => ({ ...c, ...addDmRoll(c, r, newId) }))} />
+      <RollLog rolls={campaign.rolls} />
+    </>
+  );
+  const inviteSection = (
+    <section className="section panel">
+      <h2>Invite players</h2>
+      {host.inviteUrl ? (
+        <>
+          <p className="muted small" style={{ marginTop: 4 }}>
+            Players open this link on their phone or computer and choose a character. Anyone with the link can join, so share it only with your group.
+          </p>
+          <div className="invite">
+            <QrCode text={host.inviteUrl} label="QR code of the invite link" />
+            <div className="stack" style={{ minWidth: 0, flex: 1 }}>
+              <input className="input" readOnly value={host.inviteUrl} aria-label="Invite link" onFocus={(e) => e.currentTarget.select()} />
+              <div className="row">
+                <button
+                  className="btn btn-primary"
+                  onClick={() =>
+                    navigator.clipboard?.writeText(host.inviteUrl!).then(
+                      () => setCopied(true),
+                      () => setCopied(false),
+                    )
+                  }
+                >
+                  {copied ? "Copied" : "Copy link"}
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    setCopied(false);
+                    update((c) => ({ ...c, ...replaceInvite(c, randomSecret(), randomSecret()) }));
+                  }}
+                >
+                  Replace link
+                </button>
               </div>
+              <p className="muted small">Replacing the link stops the old one working. Players already in the party need the new link too.</p>
             </div>
-            <button className="btn" onClick={() => window.open(`display.html#${campaign.id}`, `mimicbox-display-${campaign.id}`)}>
-              Open table display
+          </div>
+        </>
+      ) : (
+        <p className="muted">{host.status === "offline" ? "The invite link appears when this computer is back online." : "Preparing the invite link…"}</p>
+      )}
+      <LanInvite start={host.startLanPlayer} connected={host.connected} />
+    </section>
+  );
+
+  return (
+    <div className={`studio ${mode}`}>
+      <header className="studio-bar">
+        <a className="btn btn-quiet table-bar-btn" href="#/" aria-label="Back to your campaigns">
+          <BackIcon width={22} height={22} />
+        </a>
+        <h1 className="studio-name">{campaign.name}</h1>
+        <div role="group" aria-label="Mode" className="mode-switch">
+          {MODES.map((m) => (
+            <button key={m} aria-pressed={mode === m} onClick={() => setMode(m)}>
+              {m === "prepare" ? "Prepare" : "Play"}
             </button>
-          </div>
+          ))}
         </div>
+        <span className="table-bar-gap" />
+        <button
+          className={`chip studio-players ${host.status}`}
+          onClick={() => {
+            setMode("prepare");
+            setPrep("players");
+          }}
+          title="Invite players"
+        >
+          {status}
+        </button>
+        {mode === "play" && wide && <PanelToggle open={panel.open} onToggle={() => setPanel((l) => ({ ...l, open: !l.open }))} />}
+        <button className="btn table-bar-btn" onClick={() => window.open(`display.html#${campaign.id}`, `mimicbox-display-${campaign.id}`)}>
+          Open table display
+        </button>
       </header>
-      <main className="screen wide">
-        {importProblems && <p className="notice">{importProblems}</p>}
-        {imported && <p className="notice notice-todo">Imported. Send your players the invite link below: links from before the import don't work.</p>}
-        <div className="sheet-grid studio-grid">
-          <div className="sheet-col">
-            <CombatPanel
-              combat={campaign.combat ?? null}
-              canStart={members.some((m) => m.character)}
-              onStart={() => update((c) => ({ ...c, ...startCombat(c, newId) }))}
-              onEnd={() => update((c) => ({ ...c, ...endCombat(c) }))}
-              onNext={() => update((c) => ({ ...c, ...nextTurn(c) }))}
-              onPrevious={() => update((c) => ({ ...c, ...previousTurn(c) }))}
-              canPlace={Boolean(campaign.activeMapId)}
-              onAdd={(x, place) =>
-                update((c) => {
-                  let next = c;
-                  if (place && c.activeMapId) {
-                    const map = (c.maps ?? []).find((m) => m.id === c.activeMapId)!;
-                    const tokenId = newId();
-                    next = { ...next, ...saveToken(next, map.id, { id: tokenId, name: x.name, x: Math.floor(columns(map) / 2), y: Math.floor(rows(map) / 2), memberId: null, hidden: x.hidden, color: "#D9476B" }) };
-                    return { ...next, ...addCombatant(next, { ...x, tokenId }) };
-                  }
-                  return { ...next, ...addCombatant(next, x) };
-                })
-              }
-              onChange={(id, patch) => update((c) => ({ ...c, ...updateCombatant(c, id, patch) }))}
-              onRemove={(id) => update((c) => ({ ...c, ...removeCombatant(c, id) }))}
-            />
-            <MapsPanel campaign={campaign} update={update} onTilesChanged={host.forgetTiles} />
-            <section className="section">
-              <h2>Party</h2>
-              {members.length === 0 && <p className="muted">No one has joined yet. Send your players the invite link.</p>}
-              {members.map((m) => (
-                <MemberCard
-                  key={m.userId}
-                  member={m}
-                  here={host.connected.includes(m.userId)}
-                  onEffect={(e) => host.sendEffect(m.userId, e)}
-                  onRemove={() => update((c) => ({ ...c, ...removeMember(c, m.userId) }))}
-                />
-              ))}
-            </section>
-            <Handouts
-              handouts={campaign.handouts ?? []}
-              onSave={(h) => {
-                const old = campaign.handouts?.find((x) => x.id === h.id)?.imageId;
-                update((c) => ({ ...c, ...saveHandout(c, h) }));
-                if (old && old !== h.imageId) void deleteImage(old);
-              }}
-              onReveal={(id, revealed) => update((c) => ({ ...c, ...setHandoutRevealed(c, id, revealed) }))}
-              onRemove={(id) => {
-                const old = campaign.handouts?.find((x) => x.id === id)?.imageId;
-                update((c) => ({ ...c, ...removeHandout(c, id) }));
-                if (old) void deleteImage(old);
-              }}
-            />
-            <WorldPanel campaign={campaign} update={update} />
-          </div>
-          <div className="sheet-col">
-            <section className="section panel">
-              <h2>Invite players</h2>
-              {host.inviteUrl ? (
-                <>
-                  <p className="muted small" style={{ marginTop: 4 }}>
-                    Players open this link on their phone or computer and choose a character. Anyone with the link can join, so share it only with your group.
-                  </p>
-                  <div className="invite">
-                    <QrCode text={host.inviteUrl} label="QR code of the invite link" />
-                    <div className="stack" style={{ minWidth: 0, flex: 1 }}>
-                      <input className="input" readOnly value={host.inviteUrl} aria-label="Invite link" onFocus={(e) => e.currentTarget.select()} />
-                      <div className="row">
-                        <button
-                          className="btn btn-primary"
-                          onClick={() =>
-                            navigator.clipboard?.writeText(host.inviteUrl!).then(
-                              () => setCopied(true),
-                              () => setCopied(false),
-                            )
-                          }
-                        >
-                          {copied ? "Copied" : "Copy link"}
-                        </button>
-                        <button
-                          className="btn"
-                          onClick={() => {
-                            setCopied(false);
-                            update((c) => ({ ...c, ...replaceInvite(c, randomSecret(), randomSecret()) }));
-                          }}
-                        >
-                          Replace link
-                        </button>
-                      </div>
-                      <p className="muted small">Replacing the link stops the old one working. Players already in the party need the new link too.</p>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <p className="muted">{host.status === "offline" ? "The invite link appears when this computer is back online." : "Preparing the invite link…"}</p>
-              )}
-              <LanInvite start={host.startLanPlayer} connected={host.connected} />
-            </section>
-            <DmDice onRoll={(r) => update((c) => ({ ...c, ...addDmRoll(c, r, newId) }))} />
-            <RollLog rolls={campaign.rolls} />
-            <section className="section">
-              <h2>Backup</h2>
-              <p className="muted small" style={{ marginTop: 4 }}>
-                Your campaign lives only in this browser. Download a backup now and then, or to move to another computer. The file includes your players' characters, so keep it private.
-              </p>
-              <button
-                className="btn"
-                onClick={async () => {
-                  const tiles: Record<string, Record<string, string>> = {};
-                  for (const m of campaign.maps ?? []) tiles[m.id] = Object.fromEntries(await loadTiles(m.id));
-                  const images: Record<string, string> = {};
-                  for (const id of campaignImageIds(campaign)) {
-                    const data = await loadImage(id);
-                    if (data) images[id] = data;
-                  }
-                  downloadJson(exportCampaign(campaign, tiles, images), `${fileSafe(campaign.name, "campaign")}.mimicbox-campaign`);
-                }}
-              >
-                Download a backup
+      {host.status === "offline" && <p className="notice studio-notice">You're offline. Keep preparing: everything saves on this computer. Players on this Wi-Fi can join with Add a player without internet.</p>}
+      {host.status === "error" && <p className="notice studio-notice">Couldn't reach the signalling networks. Check this device is online, then reload the page.</p>}
+      {importProblems && <p className="notice studio-notice">{importProblems}</p>}
+      {imported && <p className="notice notice-todo studio-notice">Imported. Send your players the new invite link (under Players): links from before the import don't work.</p>}
+
+      {mode === "prepare" ? (
+        <div className="studio-prepare">
+          <nav className="prep-tabs" aria-label="Prepare">
+            {PREP_TABS.map((t) => (
+              <button key={t} className="chip" aria-current={prep === t ? "page" : undefined} aria-pressed={prep === t} onClick={() => setPrep(t)}>
+                {PREP_NAMES[t]}
               </button>
-            </section>
-            <section className="section">
-              {confirmDelete ? (
-                <div className="row">
+            ))}
+          </nav>
+          <main className="prep-body">
+            {prep === "world" && <WorldPanel campaign={campaign} update={update} />}
+            {prep === "maps" && <MapsPanel campaign={campaign} update={update} onTilesChanged={host.forgetTiles} />}
+            {prep === "handouts" && (
+              <Handouts
+                handouts={campaign.handouts ?? []}
+                onSave={(h) => {
+                  const old = campaign.handouts?.find((x) => x.id === h.id)?.imageId;
+                  update((c) => ({ ...c, ...saveHandout(c, h) }));
+                  if (old && old !== h.imageId) void deleteImage(old);
+                }}
+                onReveal={revealHandout}
+                onRemove={(id) => {
+                  const old = campaign.handouts?.find((x) => x.id === id)?.imageId;
+                  update((c) => ({ ...c, ...removeHandout(c, id) }));
+                  if (old) void deleteImage(old);
+                }}
+              />
+            )}
+            {prep === "players" && (
+              <>
+                {inviteSection}
+                {partySection}
+              </>
+            )}
+            {prep === "campaign" && (
+              <>
+                <section className="section">
+                  <h2>Backup</h2>
+                  <p className="muted small" style={{ marginTop: 4 }}>
+                    Your campaign lives only in this browser. Download a backup now and then, or to move to another computer. The file includes your players' characters, so keep it private.
+                  </p>
                   <button
-                    className="btn btn-danger"
+                    className="btn"
                     onClick={async () => {
-                      await deleteCampaign(campaign.id);
-                      location.hash = "#/";
+                      const tiles: Record<string, Record<string, string>> = {};
+                      for (const m of campaign.maps ?? []) tiles[m.id] = Object.fromEntries(await loadTiles(m.id));
+                      const images: Record<string, string> = {};
+                      for (const id of campaignImageIds(campaign)) {
+                        const data = await loadImage(id);
+                        if (data) images[id] = data;
+                      }
+                      downloadJson(exportCampaign(campaign, tiles, images), `${fileSafe(campaign.name, "campaign")}.mimicbox-campaign`);
                     }}
                   >
-                    Delete {campaign.name} from this device
+                    Download a backup
                   </button>
-                  <button className="btn" onClick={() => setConfirmDelete(false)}>
-                    Keep it
-                  </button>
-                </div>
-              ) : (
-                <button className="btn btn-quiet" onClick={() => setConfirmDelete(true)}>
-                  Delete campaign
-                </button>
-              )}
-            </section>
-          </div>
+                </section>
+                <section className="section">
+                  {confirmDelete ? (
+                    <div className="row">
+                      <button
+                        className="btn btn-danger"
+                        onClick={async () => {
+                          await deleteCampaign(campaign.id);
+                          location.hash = "#/";
+                        }}
+                      >
+                        Delete {campaign.name} from this device
+                      </button>
+                      <button className="btn" onClick={() => setConfirmDelete(false)}>
+                        Keep it
+                      </button>
+                    </div>
+                  ) : (
+                    <button className="btn btn-quiet" onClick={() => setConfirmDelete(true)}>
+                      Delete campaign
+                    </button>
+                  )}
+                </section>
+              </>
+            )}
+          </main>
         </div>
-      </main>
-    </>
+      ) : (
+        <div className={`studio-play ${wide ? "wide" : ""}`}>
+          <main className="play-map">
+            {activeMap ? (
+              <MapEditor key={activeMap.id} campaign={campaign} map={activeMap} update={update} onDeleted={() => undefined} play />
+            ) : (
+              <NoMapInPlay campaign={campaign} onShow={(id) => update((c) => ({ ...c, ...setActiveMap(c, id) }))} onPrepare={() => {
+                setMode("prepare");
+                setPrep("maps");
+              }} />
+            )}
+          </main>
+          {(wide ? panel.open : true) &&
+            (wide ? (
+              <SidePanel width={panel.width} onWidth={(width) => setPanel((l) => ({ ...l, width }))} label="Play panel">
+                {combatPanel}
+                <ReadyToReveal handouts={campaign.handouts ?? []} onReveal={revealHandout} />
+                {partySection}
+                {dice}
+              </SidePanel>
+            ) : (
+              <aside className="play-below" aria-label="Play panel">
+                {combatPanel}
+                <ReadyToReveal handouts={campaign.handouts ?? []} onReveal={revealHandout} />
+                {partySection}
+                {dice}
+              </aside>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const MODES = ["prepare", "play"] as const;
+type Mode = (typeof MODES)[number];
+const PREP_TABS = ["world", "maps", "handouts", "players", "campaign"] as const;
+type PrepTab = (typeof PREP_TABS)[number];
+const PREP_NAMES: Record<PrepTab, string> = { world: "World", maps: "Maps", handouts: "Handouts", players: "Players", campaign: "Campaign" };
+
+/** A choice remembered on this device, such as the studio's mode. */
+function useStoredChoice<T extends string>(key: string, options: readonly T[], fallback: T) {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const v = localStorage.getItem(key) as T | null;
+      return v && options.includes(v) ? v : fallback;
+    } catch {
+      return fallback;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      /* Not remembered in private browsing. */
+    }
+  }, [key, value]);
+  return [value, setValue] as const;
+}
+
+/** Play mode with no map shown: pick one of the prepared maps, or go and prepare one. */
+function NoMapInPlay({ campaign, onShow, onPrepare }: { campaign: StudioCampaign; onShow: (id: string) => void; onPrepare: () => void }) {
+  const maps = campaign.maps ?? [];
+  return (
+    <div className="play-empty">
+      <h2>No map on the table</h2>
+      {maps.length ? (
+        <>
+          <p className="muted">Show one of your maps to the players:</p>
+          <div className="row" style={{ justifyContent: "center" }}>
+            {maps.map((m) => (
+              <button key={m.id} className="btn" onClick={() => onShow(m.id)}>
+                Show {m.name}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p className="muted">You haven't added a map yet.</p>
+      )}
+      <button className="btn btn-quiet" onClick={onPrepare}>
+        Prepare a map
+      </button>
+    </div>
+  );
+}
+
+/** Handouts one tap from the table: show or hide each without leaving Play. */
+function ReadyToReveal({ handouts, onReveal }: { handouts: Handout[]; onReveal: (id: string, revealed: boolean) => void }) {
+  return (
+    <section className="section" aria-label="Ready to reveal">
+      <h2>Handouts</h2>
+      {handouts.length === 0 && <p className="muted small">Write handouts in Prepare; they wait here to be shown.</p>}
+      <ul className="rows">
+        {handouts.map((h) => (
+          <li key={h.id} className="resource spread">
+            <span>
+              {h.title}
+              <br />
+              <span className="muted small">{h.revealed ? "Shown to the party" : "Only you"}</span>
+            </span>
+            <button className={h.revealed ? "btn btn-quiet" : "btn"} aria-label={`${h.revealed ? "Hide" : "Show"} ${h.title}`} onClick={() => onReveal(h.id, !h.revealed)}>
+              {h.revealed ? "Hide" : "Show"}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -889,7 +1049,7 @@ function CombatPanel({
   const maxHp = Number.parseInt(hp, 10);
   return (
     <section className="section panel" aria-label="Combat">
-      <div className="spread">
+      <div className="spread" style={{ flexWrap: "wrap", gap: 8 }}>
         <h2>Combat, round {combat.round}</h2>
         <span className="row">
           <button className="btn" onClick={onPrevious} disabled={combat.turnId === null}>
@@ -900,7 +1060,7 @@ function CombatPanel({
           </button>
         </span>
       </div>
-      <ol className="initiative" aria-label="Initiative order">
+      <ol className="initiative dm-initiative" aria-label="Initiative order">
         {order.map((c) => (
           <li key={c.id} aria-current={c.id === combat.turnId ? "true" : undefined}>
             <input
@@ -939,14 +1099,14 @@ function CombatPanel({
               </span>
             )}
             {!c.memberId && (
-              <>
+              <span className="combat-actions">
                 <button className="btn btn-quiet small" onClick={() => onChange(c.id, { hidden: !c.hidden })}>
                   {c.hidden ? "Reveal" : "Hide"}
                 </button>
                 <button className="btn btn-quiet small" aria-label={`Remove ${c.name}`} onClick={() => onRemove(c.id)}>
                   Remove
                 </button>
-              </>
+              </span>
             )}
           </li>
         ))}
