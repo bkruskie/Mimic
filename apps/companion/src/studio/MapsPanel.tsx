@@ -2,7 +2,7 @@
  * The DM's maps: add an image, line up the grid, reveal and hide squares, place tokens, and choose which map the
  * players see. The DM always sees the whole image; squares players can't see are shaded.
  */
-import { newId } from "@mimicbox/ruleset-dnd5e";
+import { derive, newId, srdContent, type Character } from "@mimicbox/ruleset-dnd5e";
 import {
   actingTokenId,
   addMap,
@@ -19,6 +19,11 @@ import {
   setGrid,
   setRevealed,
   setWalls,
+  setDark,
+  setTokenSight,
+  toggleLight,
+  partyVision,
+  FEET_PER_SQUARE,
   PIN_TEXT_MAX,
   gridKind,
   placePin,
@@ -36,6 +41,33 @@ import { deleteTiles, loadTiles, saveTiles, type StudioCampaign } from "./store"
 
 const PARTY_COLORS = ["#7FA66B", "#C9973F", "#6FA3C7", "#B08AD6", "#E0A15A", "#8FC9B5"];
 const CREATURE_COLOR = "#D9476B";
+
+/** Lights by what they are, as reach in squares (bright and dim light together). */
+const LIGHTS: [number, string][] = [
+  [2, "Candle, 10 ft"],
+  [8, "Torch or the Light cantrip, 40 ft"],
+  [12, "Lantern, 60 ft"],
+  [6, "Brazier, 30 ft"],
+];
+const DARKVISION: [number, string][] = [
+  [0, "No darkvision"],
+  [12, "Darkvision 60 ft"],
+  [24, "Darkvision 120 ft"],
+];
+
+/** A character's darkvision in squares, from their sheet, for their token on a dark map. */
+const darkvisionOf = (c: Character | null): number => {
+  if (!c) return 0;
+  try {
+    return Math.round((derive(c, srdContent).darkvision ?? 0) / FEET_PER_SQUARE);
+  } catch {
+    return 0;
+  }
+};
+const partyToken = (m: { userId: string; character: Character | null }, x: number, y: number, color: string): Omit<Token, "id"> => {
+  const darkvision = darkvisionOf(m.character);
+  return { name: m.character!.name, x, y, memberId: m.userId, hidden: false, color, ...(darkvision ? { darkvision } : {}) };
+};
 
 export function MapsPanel({ campaign, update, onTilesChanged }: { campaign: StudioCampaign; update: (fn: (c: StudioCampaign) => StudioCampaign) => void; onTilesChanged: (mapId: string) => void }) {
   const maps = campaign.maps ?? [];
@@ -61,7 +93,7 @@ export function MapsPanel({ campaign, update, onTilesChanged }: { campaign: Stud
         height,
         grid: { size, offsetX: 0, offsetY: 0 },
         revealed: [],
-        tokens: party.map((m, i) => ({ id: newId(), name: m.character!.name, x: i, y: 0, memberId: m.userId, hidden: false, color: PARTY_COLORS[i % PARTY_COLORS.length]! })),
+        tokens: party.map((m, i) => ({ id: newId(), ...partyToken(m, i, 0, PARTY_COLORS[i % PARTY_COLORS.length]!) })),
       };
       update((c) => ({ ...c, ...addMap(c, scene) }));
       onTilesChanged(id);
@@ -143,8 +175,13 @@ export function MapEditor({
     ["door", "Doors"],
     ["erase", "Erase walls"],
     ["pin", "Pins"],
+    ...(map.dark ? ([["light", "Lights"]] as [MapTool, string][]) : []),
     ["measure", "Measure"],
   ];
+  const [lightReach, setLightReach] = useState(8);
+  useEffect(() => {
+    if (!map.dark && tool === "light") setTool("move");
+  }, [map.dark, tool]);
   const [creature, setCreature] = useState("");
   const [hiddenCreature, setHiddenCreature] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -157,6 +194,8 @@ export function MapEditor({
   const revealed = useMemo(() => new Set(map.revealed), [map.revealed]);
   const walls = useMemo(() => new Set(map.walls ?? []), [map.walls]);
   const exploring = map.explore?.on ?? false;
+  // A dark map: what the party sees now, so the DM sees the dark as players do.
+  const seen = useMemo(() => (map.dark ? new Set(partyVision(map)) : undefined), [map]);
   const [radius, setRadius] = useState(String(map.explore?.radius ?? 0));
   const missingParty = Object.values(campaign.members).filter((m) => m.character && !map.tokens.some((t) => t.memberId === m.userId));
 
@@ -233,6 +272,7 @@ export function MapEditor({
             wall: `Drag across ${cellWord} that block sight. Players never see walls; they only affect exploring.`,
             door: `Tap a ${cellOne} to add a closed door, tap again to open it, and again to close it.`,
             erase: "Drag across walls and doors to remove them.",
+            light: `Tap a ${cellOne} to place a light there; tap it again to take it away. Players see what it lights, never the light's marker.`,
             pin: `Tap a ${cellOne} to place the pin there. Tap a pin's ${cellOne} again to remove it. Players see their pins once the ${cellOne} is revealed.`,
             measure: kind === "square" ? "Drag from one square to another to measure. Diagonal steps count 5 feet." : kind === "none" ? "Drag between any two points to measure in a straight line." : "Drag from one hex to another to measure. Each hex counts 5 feet.",
             view: "",
@@ -256,6 +296,18 @@ export function MapEditor({
         </div>
       )}
       {pinHint && tool === "pin" && <p className="notice small">{pinHint}</p>}
+      {tool === "light" && (
+        <label className="field" style={{ maxWidth: 320 }}>
+          <span>Light to place</span>
+          <select className="input" value={lightReach} onChange={(e) => setLightReach(Number(e.target.value))}>
+            {LIGHTS.map(([n, name]) => (
+              <option key={n} value={n}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <MapView
         label={`${map.name}, as you see it`}
         map={map}
@@ -278,6 +330,9 @@ export function MapEditor({
             update((c) => ({ ...c, ...placePin(c, map.id, { id: newId(), x, y, label: pinText, layer: pinLayer }) }));
           }
         }}
+        seen={show.shading ? seen : undefined}
+        lights={map.dark ? map.lights ?? [] : undefined}
+        onLight={(x, y) => update((c) => ({ ...c, ...toggleLight(c, map.id, { id: newId(), x, y, radius: lightReach }) }))}
         activeTokenId={campaign.activeMapId === map.id ? actingTokenId(campaign) : null}
         onMove={(t, x, y) => update((c) => ({ ...c, ...explore(saveToken(c, map.id, { ...t, x, y }), map.id) }))}
         onPaint={(cells, paintTool) =>
@@ -322,6 +377,15 @@ export function MapEditor({
       </div>
       <p className="muted small" style={{ margin: 0 }}>
         When on, {cellWord} the party's tokens can see are revealed as they move. Walls and closed doors block sight; a sight of 0 means no limit. Revealed {cellWord} stay revealed.
+      </p>
+      <label className="row" style={{ alignItems: "center", gap: 8, minHeight: 44 }}>
+        <input type="checkbox" checked={map.dark ?? false} onChange={(e) => update((c) => ({ ...c, ...setDark(c, map.id, e.target.checked) }))} />
+        <span>This map is dark</span>
+      </label>
+      <p className="muted small" style={{ margin: 0 }}>
+        {map.dark
+          ? `The party sees only what light reaches, and what's within a character's darkvision. Place lights with the Lights tool, and give tokens a torch below. What they saw before stays on their map, dimmed, and creatures there are hidden.`
+          : `A dark map hides what the party has no light to see.`}
       </p>
       {!play && (
       <details>
@@ -374,6 +438,26 @@ export function MapEditor({
               <span className="muted small">{t.memberId ? ", player" : t.hidden ? ", hidden from players" : ""}</span>
             </span>
             <span className="row">
+              {map.dark && (
+                <select className="input input-small" aria-label={`Light ${t.name} carries`} value={t.light ?? 0} onChange={(e) => update((c) => ({ ...c, ...setTokenSight(c, map.id, t.id, { light: Number(e.target.value) }) }))}>
+                  <option value={0}>No light</option>
+                  {LIGHTS.filter(([n]) => n !== 6).map(([n, name]) => (
+                    <option key={n} value={n}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {map.dark && t.memberId && (
+                <select className="input input-small" aria-label={`${t.name}'s darkvision`} value={t.darkvision ?? 0} onChange={(e) => update((c) => ({ ...c, ...setTokenSight(c, map.id, t.id, { darkvision: Number(e.target.value) }) }))}>
+                  {DARKVISION.map(([n, name]) => (
+                    <option key={n} value={n}>
+                      {name}
+                    </option>
+                  ))}
+                  {t.darkvision && !DARKVISION.some(([n]) => n === t.darkvision) ? <option value={t.darkvision}>Darkvision {t.darkvision * FEET_PER_SQUARE} ft</option> : null}
+                </select>
+              )}
               {!t.memberId && (
                 <button className="btn btn-quiet small" onClick={() => update((c) => ({ ...c, ...saveToken(c, map.id, { ...t, hidden: !t.hidden }) }))}>
                   {t.hidden ? "Reveal" : "Hide"}
@@ -390,7 +474,7 @@ export function MapEditor({
         <button
           className="btn"
           onClick={() =>
-            missingParty.forEach((m, i) => addToken({ name: m.character!.name, x: center.x + i, y: center.y, memberId: m.userId, hidden: false, color: PARTY_COLORS[(map.tokens.length + i) % PARTY_COLORS.length]! }))
+            missingParty.forEach((m, i) => addToken(partyToken(m, center.x + i, center.y, PARTY_COLORS[(map.tokens.length + i) % PARTY_COLORS.length]!)))
           }
         >
           Add party tokens ({missingParty.map((m) => m.character!.name).join(", ")})

@@ -105,6 +105,7 @@ export function TableView({
                 tokens={table.map.tokens}
                 doors={table.map.doors ?? []}
                 pins={table.map.pins ?? []}
+                seen={table.map.seen ?? undefined}
                 activeTokenId={table.map.activeTokenId ?? null}
                 onDoor={tool === "view" ? (x, y) => table.toggleDoor(x, y) : undefined}
                 canMove={(t) => t.memberId !== null && t.memberId === table.memberId}

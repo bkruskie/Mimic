@@ -6,7 +6,7 @@
 import { TILE_SIZE, cellAt as gridCellAt, cellCentre, cellPolygon, columns, distanceFeet, gridKind, gridPath, polygonPath, rows, tokenSpotAt, type MapScene, type Point, type Token } from "@mimicbox/table";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 
-export type MapTool = "view" | "reveal" | "hide" | "move" | "measure" | "wall" | "erase" | "door" | "pin";
+export type MapTool = "view" | "reveal" | "hide" | "move" | "measure" | "wall" | "erase" | "door" | "pin" | "light";
 /** Tools that paint across squares by dragging. */
 export type PaintTool = "reveal" | "hide" | "wall" | "erase";
 
@@ -29,6 +29,14 @@ interface Props {
   pins?: { id: string; x: number; y: number; label: string; layer?: "dm" | "players" }[];
   /** With the pin tool, a tap on a cell. */
   onPin?: (x: number, y: number) => void;
+  /** A dark map: the squares seen now. Every other square is drawn dimmed. */
+  seen?: ReadonlySet<number> | readonly number[];
+  /** The DM's view: lights on the map, drawn with their reach. */
+  lights?: { id: string; x: number; y: number; radius: number }[];
+  /** With the light tool, a tap on a cell. */
+  onLight?: (x: number, y: number) => void;
+  /** Zoom buttons under the map. Off for the table display, which always fits the map to the screen. */
+  zoomControls?: boolean;
   /** The token whose turn it is. */
   activeTokenId?: string | null;
   /** Fit the whole map in the box instead of its width (the table display). */
@@ -36,7 +44,7 @@ interface Props {
   label: string;
 }
 
-export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove = () => false, onMove, onPaint, onDoor, walls, doors, pins, onPin, activeTokenId = null, fit = "width", label }: Props) {
+export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove = () => false, onMove, onPaint, onDoor, walls, doors, pins, onPin, seen, lights, onLight, zoomControls = true, activeTokenId = null, fit = "width", label }: Props) {
   const [ruler, setRuler] = useState<{ from: { x: number; y: number }; to: { x: number; y: number } } | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const surface = useRef<HTMLDivElement>(null);
@@ -107,6 +115,11 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
       onPin(c.x, c.y);
       return;
     }
+    if (tool === "light" && onLight) {
+      const c = cellAt(e);
+      onLight(c.x, c.y);
+      return;
+    }
     if (tool === "door" && onDoor) {
       const c = cellAt(e);
       onDoor(c.x, c.y);
@@ -141,13 +154,19 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
 
   const fog: { x: number; y: number }[] = [];
   if (revealed && !hex) for (let y = 0; y < rws; y++) for (let x = 0; x < cols; x++) if (!revealed.has(y * cols + x)) fog.push({ x, y });
+  // Darkness: everything not seen now, as one path (the map minus the seen cells), on squares and hexes alike.
+  const darkness = useMemo(() => {
+    if (!seen) return "";
+    const holes = [...seen].map((i) => polygonPath(cellPolygon(map, i % cols, Math.floor(i / cols)))).join("");
+    return `M0 0H${map.width}V${map.height}H0Z${holes}`;
+  }, [seen, map, cols]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="map-view">
       <div className="map-box" ref={box} role="img" aria-label={label}>
         <div
           ref={surface}
-          className={`map-surface ${painting || tool === "measure" || tool === "door" || tool === "pin" ? "painting" : ""}`}
+          className={`map-surface ${painting || tool === "measure" || tool === "door" || tool === "pin" || tool === "light" ? "painting" : ""}`}
           style={{ width: map.width * scale, height: map.height * scale }}
           onPointerDown={down}
           onPointerMove={moveOver}
@@ -183,6 +202,16 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
             ) : (
               fog.map((c) => shape(c.x, c.y, "fog", `f${c.x}:${c.y}`))
             )}
+            {darkness && <path className="darkness" fillRule="evenodd" d={darkness} />}
+            {lights?.map((l) => {
+              const { cx, cy } = center(l.x, l.y);
+              return (
+                <g key={l.id} className="light">
+                  <circle className="light-reach" cx={cx} cy={cy} r={(l.radius + 0.5) * size} strokeWidth={Math.max(1, size / 30)} />
+                  <circle className="light-flame" cx={cx} cy={cy} r={size * 0.18} />
+                </g>
+              );
+            })}
             {walls && [...walls].map((i) => shape(i % cols, Math.floor(i / cols), "wall", `w${i}`))}
             {doors?.map((d) => shape(d.x, d.y, d.open ? "door open" : "door", `d${d.x}:${d.y}`, 0.7))}
             {paint && [...paint.values()].map((c) => shape(c.x, c.y, `paint-${tool}`, `p${c.x}:${c.y}`))}
@@ -231,6 +260,7 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
           })}
         </div>
       </div>
+      {zoomControls && (
       <div className="row map-zoom">
         {ruler && (
           <span className="ruler-label" role="status">
@@ -245,6 +275,7 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
           +
         </button>
       </div>
+      )}
     </div>
   );
 }

@@ -86,7 +86,7 @@ async function dmTo(page, place) {
   const switcher = page.getByRole("group", { name: "Mode" }).getByRole("button", { name: mode });
   if ((await switcher.getAttribute("aria-pressed")) !== "true") await switcher.click();
   if (place === "play") return;
-  const names = { world: "World", maps: "Maps", encounters: "Encounters", handouts: "Handouts", players: "Players", campaign: "Campaign" };
+  const names = { world: "World", maps: "Maps", encounters: "Encounters", handouts: "Handouts", scenes: "Scenes", sessions: "Sessions", players: "Players", campaign: "Campaign" };
   const tab = page.getByRole("navigation", { name: "Prepare" }).getByRole("button", { name: names[place], exact: true });
   if ((await tab.getAttribute("aria-pressed")) !== "true") await tab.click();
 }
@@ -133,6 +133,12 @@ try {
   await eventually(async () => /At The Sunken Bell/.test(await alice.page.locator(".sheet-top").innerText()), "Alice's sheet connects to the DM");
   await eventually(async () => /Wren Ashdown/.test(await text(dm.page)) && /Played by Alice/.test(await text(dm.page)), "the DM sees Wren, played by Alice");
   check(/11\s*\/\s*12/.test(await dm.page.locator(".member", { hasText: "Wren Ashdown" }).innerText()), "with her hit points (11 of 12)");
+
+  // ----- A session starts: from here on, what the party sees is logged -----
+  await dmTo(dm.page, "play");
+  await dm.page.getByRole("button", { name: "Start session 1" }).click();
+  await dm.page.getByRole("button", { name: "End session" }).waitFor();
+  check(/Session 1 started/.test(await dm.page.getByRole("list", { name: "Session log" }).innerText()), "the DM starts session 1 and its log begins");
 
   // Damage on Alice's sheet reaches the DM.
   await alice.page.locator(".hp-vital").click();
@@ -208,6 +214,14 @@ try {
   check(!/Flood the lower city/.test(await display.locator("main").innerText()), "but never the hidden one");
   await eventually(async () => display.locator(".display-handout img.handout-image").evaluateAll((imgs) => imgs.length === 1 && imgs[0].naturalWidth > 0), "the display shows its picture too");
   await shot(display, "display-handout");
+  // A bright room: the DM picks the light theme and the display opened from the studio follows.
+  await dmTo(dm.page, "campaign");
+  await dm.page.getByRole("group", { name: "Theme" }).getByRole("button", { name: "Light" }).click();
+  await eventually(async () => (await display.evaluate(() => document.documentElement.dataset.theme)) === "light", "the DM switches to the light theme and the table display follows");
+  await shot(display, "display-light");
+  await dm.page.getByRole("group", { name: "Theme" }).getByRole("button", { name: "Dark" }).click();
+  await eventually(async () => (await display.evaluate(() => document.documentElement.dataset.theme)) === "dark", "and back to dark");
+  await dmTo(dm.page, "handouts");
   await dm.page.getByRole("article", { name: "The ferryman's letter" }).getByRole("button", { name: "Hide again" }).click();
   await eventually(async () => !/ferryman/.test(await display.locator("main").innerText()), "hiding it again takes it off the display");
 
@@ -432,6 +446,35 @@ try {
   await alice.page.mouse.click(ab.x + 250 * ak2, ab.y + 150 * ak2);
   await eventually(async () => (await dmDoors.count()) === openBefore + 1, "Alice opens it from her sheet and the DM's map shows it open");
 
+  // ----- A dark map: the party sees only what light or darkvision reaches -----
+  await dm.page.getByRole("button", { name: "Reveal all" }).click();
+  await dm.page.getByLabel("Creature token").fill("Rat");
+  await dm.page.getByRole("checkbox", { name: "Hidden" }).uncheck();
+  await dm.page.getByRole("button", { name: "Add token" }).click();
+  await openTable(alice.page);
+  await eventually(async () => (await aliceMap.getByRole("button", { name: "Rat" }).count()) === 1, "a rat scurries onto the map");
+  const tokensInLight = await aliceMap.locator(".token").count();
+  await dm.page.getByRole("checkbox", { name: "This map is dark" }).check();
+  await eventually(async () => (await aliceMap.locator(".map-overlay .darkness").count()) === 1, "on a dark map, Alice's map dims what Wren can't see");
+  await eventually(async () => (await aliceMap.getByRole("button", { name: "Rat" }).count()) === 0, "and no longer shows the rat in the dark");
+  await shot(alice.page, "alice-dark");
+  await dm.page.getByLabel("Light Wren Ashdown carries").selectOption({ label: "Lantern, 60 ft" });
+  await eventually(async () => (await aliceMap.locator(".token").count()) === tokensInLight, "Wren lights a lantern and Alice sees the rat again");
+  await dm.page.getByRole("button", { name: "Lights", exact: true }).click();
+  await dm.page.mouse.click(...(await at(950, 450)));
+  const dmMap = dm.page.getByRole("img", { name: "docks, as you see it" });
+  check((await dmMap.locator(".light-flame").count()) === 1, "the DM places a light on the map");
+  await shot(dm.page, "dm-dark-map");
+  check((await aliceMap.locator(".light-flame").count()) === 0, "players never get the light's marker");
+  await dm.page.mouse.click(...(await at(950, 450)));
+  check((await dmMap.locator(".light-flame").count()) === 0, "tapping it again takes it away");
+  await dm.page.getByLabel("Light Wren Ashdown carries").selectOption({ label: "No light" });
+  await dm.page.getByRole("checkbox", { name: "This map is dark" }).uncheck();
+  await eventually(async () => (await aliceMap.locator(".map-overlay .darkness").count()) === 0, "lighting the map again clears the dark from Alice's map");
+  await dm.page.getByRole("button", { name: "Move tokens" }).click();
+  await dm.page.getByRole("button", { name: "Remove Rat" }).click();
+  await openSheet(alice.page);
+
   // Turns light up the acting token.
   await openSheet(alice.page);
   await dmTo(dm.page, "play");
@@ -447,6 +490,26 @@ try {
   await eventually(async () => (await aliceMap.getByRole("button", { name: "Wren Ashdown, acting now" }).count()) === 1, "and Wren's on hers");
   await shot(alice.page, "alice-map-turn");
   await shot(display, "display-map-turn");
+  // Layouts: the map beside the turns (the default), the map alone, or the party and rolls with no map.
+  const displayBox = await display.locator(".display-map .map-box").boundingBox();
+  check(displayBox.height >= 700 && displayBox.width > 800, `the map fills the display's height beside the turn order (${Math.round(displayBox.width)} by ${Math.round(displayBox.height)})`);
+  check(/Round 1/.test(await display.getByRole("complementary", { name: "Turns and party" }).innerText()), "with the round and party in the side panel");
+  await display.mouse.move(640, 300);
+  await display.getByRole("group", { name: "Layout" }).getByRole("button", { name: "Map", exact: true }).click();
+  await eventually(async () => (await display.getByRole("complementary", { name: "Turns and party" }).count()) === 0, "Map alone gives the map the whole screen");
+  const full = await display.locator(".display-map .map-box").boundingBox();
+  check(full.width >= 1270 && full.height >= 700, `edge to edge (${Math.round(full.width)} by ${Math.round(full.height)})`);
+  await shot(display, "display-layout-map");
+  await display.waitForTimeout(3500);
+  check((await display.locator(".display-controls").evaluate((el) => getComputedStyle(el).opacity)) === "0", "the display's controls fade when the pointer rests");
+  await display.reload();
+  await display.locator(".display-map .map-surface").waitFor();
+  check((await display.getByRole("complementary", { name: "Turns and party" }).count()) === 0, "and the layout is kept after a reload");
+  await display.mouse.move(600, 300);
+  await display.getByRole("group", { name: "Layout" }).getByRole("button", { name: "Party and rolls" }).click();
+  await eventually(async () => (await display.locator(".display-map").count()) === 0 && (await display.getByRole("heading", { name: "Wren Ashdown" }).count()) === 1, "Party and rolls shows the party with no map");
+  await display.getByRole("group", { name: "Layout" }).getByRole("button", { name: "Map and turns" }).click();
+  await display.locator(".display-map .map-surface").waitFor();
   await openSheet(alice.page);
   await dm.page.getByRole("region", { name: "Combat" }).getByRole("button", { name: "End combat" }).click();
   await dm.page.getByRole("button", { name: "End combat" }).first().click();
@@ -572,6 +635,45 @@ try {
   await dm.page.getByRole("region", { name: "Combat" }).getByRole("button", { name: "End combat" }).click();
   await dm.page.getByRole("button", { name: "End combat" }).first().click();
 
+  // ----- Scenes: the plan, in order, played one tap at a time -----
+  await dmTo(dm.page, "scenes");
+  const planScene = async (title, notes, pick) => {
+    await dm.page.getByRole("button", { name: "New scene" }).click();
+    const form = dm.page.getByRole("region", { name: "Scene", exact: true });
+    await form.getByLabel("Scene title").fill(title);
+    await form.getByLabel("Notes for you").fill(notes);
+    await pick(form);
+    await form.getByRole("button", { name: "Save scene" }).click();
+  };
+  await planScene("Arrival at the docks", "Mara waits by the **boat**.", async (form) => {
+    await form.getByLabel("Map").selectOption({ label: "docks" });
+    await form.getByRole("group", { name: "Handouts to give" }).getByLabel("The ferryman's letter").check();
+  });
+  await planScene("Trouble on the pier", "They strike when the bell rings.", (form) => form.getByLabel("Fight").selectOption({ label: "Docks ambush" }));
+  const plan = dm.page.getByRole("region", { name: "Scenes", exact: true });
+  await plan.getByRole("button", { name: "Move Trouble on the pier earlier" }).click();
+  check(/Trouble on the pier[\s\S]*Arrival at the docks/.test(await plan.innerText()), "the DM plans two scenes and reorders them");
+  await plan.getByRole("button", { name: "Move Trouble on the pier later" }).click();
+  check(/docks map, 1 handout/.test(await plan.innerText()) && /Docks ambush/.test(await plan.innerText()), "each lists what it gathers");
+  await shot(dm.page, "dm-scenes");
+  await dmTo(dm.page, "play");
+  const sceneBox = dm.page.getByRole("region", { name: "Scene", exact: true });
+  await sceneBox.getByRole("button", { name: "Begin Arrival at the docks" }).click();
+  await eventually(async () => /Mara waits by the boat/.test(await sceneBox.innerText()), "in Play, the first scene begins with the DM's notes");
+  check((await dm.page.getByRole("img", { name: "docks, as you see it" }).count()) === 1, "and its map showing");
+  await sceneBox.getByRole("button", { name: "Show The ferryman's letter" }).click();
+  await eventually(async () => (await sceneBox.getByRole("button", { name: "Hide The ferryman's letter" }).count()) === 1, "its handout is shown from the scene");
+  await sceneBox.getByRole("button", { name: "Hide The ferryman's letter" }).click();
+  await shot(dm.page, "dm-scene-play");
+  await sceneBox.getByRole("button", { name: "Next scene: Trouble on the pier" }).click();
+  await eventually(async () => (await sceneBox.getByRole("button", { name: "Run Docks ambush" }).count()) === 1, "Next moves on to the ambush, with its fight one tap away");
+  await sceneBox.getByRole("button", { name: "Finish scene" }).click();
+  await eventually(async () => /Every planned scene has been played/.test(await sceneBox.innerText()), "and finishing the last scene says the plan is done");
+  check(/Scene: Arrival at the docks/.test(await dm.page.getByRole("region", { name: "Session", exact: true }).innerText() + (await dm.page.getByRole("list", { name: "Session log" }).innerText())), "the session log marks where each scene began");
+  await alice.page.locator(".chip-table").click();
+  check(!/Arrival at the docks|Mara waits/.test(await alice.page.getByRole("dialog").innerText()), "and Alice never sees the plan");
+  await alice.page.keyboard.press("Escape");
+
   // ----- A reconnect doesn't repeat anything -----
   await dmTo(dm.page, "play");
   const rollsBefore = await dm.page.getByRole("list", { name: "Rolls" }).locator("li").count();
@@ -601,6 +703,36 @@ try {
   await shot(dm.page, "dm-play-phone");
   await dm.page.setViewportSize(dmSize);
 
+  // ----- The session ends: its log becomes a recap the party can read -----
+  await dmTo(dm.page, "play");
+  const sessionBox = dm.page.getByRole("region", { name: "Session" });
+  await sessionBox.getByLabel("Add to the log").fill("The party swore to find the bell.");
+  await sessionBox.getByRole("button", { name: "Add", exact: true }).click();
+  await sessionBox.getByRole("button", { name: /^Show all \d+ lines$/ }).click();
+  const logText = await sessionBox.getByRole("list", { name: "Session log" }).innerText();
+  check(
+    /Wren Ashdown rolled Athletics/.test(logText) && /rolled Ogre club/.test(logText) && /The party received “The ferryman's letter”/.test(logText) && /Bob joined as Bram Hollis/.test(logText) && /A fight began/.test(logText) && /The party swore to find the bell/.test(logText),
+    "the log holds the rolls, the handout, Bob joining, the fights and the DM's own note",
+  );
+  check(!/Ambush|Goblin Boss|Villain/.test(logText), "and nothing the party never saw: no secret roll, hidden creature or hidden handout");
+  await shot(dm.page, "dm-session-log");
+  await sessionBox.getByRole("button", { name: "End session" }).click();
+  const recapBox = dm.page.getByRole("article", { name: "Session 1" }).getByLabel("Recap");
+  await recapBox.waitFor();
+  const recap = await recapBox.inputValue();
+  check(/## What happened/.test(recap) && /The party received “The ferryman's letter”/.test(recap) && !/Ogre club/.test(recap), "ending it opens a recap drafted from the log, without the ordinary rolls");
+  await recapBox.fill(`${recap}\n\nNext time: the drowned vault.`);
+  await dm.page.getByRole("article", { name: "Session 1" }).getByRole("button", { name: "Share with players" }).click();
+  await eventually(async () => (await alice.page.getByText("New handout: Session 1 recap").count()) > 0, "sharing it sends Alice the recap as a handout");
+  await alice.page.locator(".chip-table").click();
+  await alice.page.getByRole("dialog").getByText("Session 1 recap").click();
+  const aliceRecap = await alice.page.getByRole("dialog").innerText();
+  check(/The party swore to find the bell/.test(aliceRecap) && /Next time: the drowned vault/.test(aliceRecap), "with the DM's edits");
+  await shot(alice.page, "alice-recap");
+  await alice.page.keyboard.press("Escape");
+  check(await dm.page.getByRole("button", { name: "Shared with players" }).isDisabled(), "and the DM sees it is shared");
+  await shot(dm.page, "dm-recap");
+
   // ----- Backups: the DM moves the campaign to another computer; a player restores their vault -----
   await dmTo(dm.page, "campaign");
   const [campaignFile] = await Promise.all([dm.page.waitForEvent("download"), dm.page.getByRole("button", { name: "Download a backup" }).click()]);
@@ -624,6 +756,10 @@ try {
   await dmTo(laptop.page, "world");
   const laptopWorld = await laptop.page.getByRole("region", { name: "World" }).innerText();
   check(/Port Ashen/.test(laptopWorld) && /Mara the ferrywoman/.test(laptopWorld) && /The Drowned Vault/.test(laptopWorld), "with its world notes, secrets included");
+  await dmTo(laptop.page, "sessions");
+  check(/Session 1[\s\S]*Shared/.test(await laptop.page.getByRole("article", { name: "Session 1" }).innerText()), "with session 1 and its shared recap");
+  await dmTo(laptop.page, "scenes");
+  check(/Arrival at the docks[\s\S]*Trouble on the pier/.test(await laptop.page.getByRole("region", { name: "Scenes", exact: true }).innerText()), "and its scenes, in order");
   await dmTo(laptop.page, "maps");
   await laptop.page.getByRole("button", { name: /^docks/ }).click();
   await eventually(async () => (await laptop.page.getByRole("img", { name: "docks, as you see it" }).locator(".map-surface > img").count()) === 6, "the map and all six of its tiles come along");
@@ -652,6 +788,11 @@ try {
   await cabin.page.evaluate(() => navigator.serviceWorker.ready);
   await cabin.page.reload();
   check(await cabin.page.evaluate(() => !!navigator.serviceWorker.controller), "the studio installs itself for offline use");
+  // The studio keeps the bestiary for play without internet once it has fetched it in the background.
+  await eventually(
+    async () => cabin.page.evaluate(async () => (await caches.keys()).includes("mimicbox-bestiary") && (await (await caches.open("mimicbox-bestiary")).keys()).length > 0),
+    "and keeps the bestiary for later",
+  );
   await cabin.context.setOffline(true);
   await cabin.page.reload();
   await cabin.page.getByLabel("Campaign name").fill("Snowbound");
