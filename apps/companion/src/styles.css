@@ -1440,12 +1440,108 @@ details.feature[open] {
   height: 100%;
 }
 .token-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: middle; }
-.display-map {
-  height: 70vh;
+/* The map layouts: the map fills the screen; nothing sits around it but the side panel. */
+.display.display-fill {
+  height: 100vh;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+.display.layout-map-side {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(260px, 24vw, 420px);
+}
+.display-fill .display-map {
+  height: 100vh;
+  min-width: 0;
 }
 .display-map .map-view {
   height: 100%;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: 1fr;
+}
+.display-fill .map-box {
+  background: transparent;
+  border-radius: 0;
+  max-height: none;
+  height: 100%;
+  /* The map sits in the middle of whatever space it doesn't fill. */
+  display: grid;
+  place-items: center;
+}
+.display-side {
+  height: 100vh;
+  overflow-y: auto;
+  padding: clamp(12px, 1.6vw, 24px);
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  background: var(--grain) var(--lid);
+  border-left: 1px solid var(--seam);
+}
+.display-side .initiative {
+  display: grid;
+  gap: 6px;
+}
+.display-party.compact {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.display-party.compact .display-card {
+  background: var(--grain) var(--lid-raised);
+  padding: 12px 14px;
+}
+.display-party.compact .display-card h2 {
+  font-size: clamp(18px, 1.5vw, 24px);
+}
+.display-party.compact .display-stats {
+  font-size: clamp(15px, 1.2vw, 20px);
+  margin: 6px 0 0;
+}
+.display-side .display-total {
+  font-size: clamp(40px, 4vw, 72px);
+}
+/* Map only: a shown handout and a fresh roll float in a corner. */
+.display-float {
+  position: fixed;
+  right: clamp(12px, 2vw, 32px);
+  bottom: clamp(12px, 2vw, 32px);
+  width: min(420px, 36vw);
+  display: grid;
+  gap: 12px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+.display-float .display-latest {
+  box-shadow: 0 8px 24px var(--shadow);
+}
+.display-main {
+  display: grid;
+  gap: 24px;
+  align-content: start;
+}
+/* Controls appear when the pointer moves, and fade when it rests. */
+.display-controls {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--hollow) 88%, transparent);
+  box-shadow: 0 6px 20px var(--shadow);
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+.display-controls.awake,
+.display-controls:has(:focus-visible) {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .display-controls {
+    transition: none;
+  }
 }
 .display .map-surface { margin: 0 auto; }
 .map-overlay .wall {
@@ -2313,4 +2409,9 @@ body,
   min-height: 36px;
   padding: 4px 8px;
   font-size: var(--t-sm);
+}
+.display-side .initiative li {
+  background: var(--grain) var(--lid-raised);
+  font-size: clamp(16px, 1.3vw, 22px);
+  padding: 8px 12px;
 }

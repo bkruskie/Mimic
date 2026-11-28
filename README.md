@@ -33,6 +33,8 @@ Encounters can be prepared ahead ("Docks ambush: 4 goblins and a hidden boss, on
 
 Maps can be dark: the party sees only what light reaches, from lights the DM places and torches or lanterns their tokens carry, plus what a character's darkvision shows (taken from their sheet). What they saw before stays on their map, dimmed, and creatures standing in the dark are never sent to them.
 
+The table display has three layouts, picked on the display itself and kept for that window: the map edge to edge, the map beside the turn order and party, or the party and rolls with no map (for a wall TV beside a projected map). Its controls fade away when the pointer rests.
+
 Dark by default, with a light Parchment theme for bright rooms and projectors. Each device picks its own (or follows the device setting), and a table display opened from the studio follows the DM's choice.
 
 Plan the game as scenes, in order. Each holds the DM's notes, the map to show, the fight to run, and the handouts and world pages to reveal. In Play, the scene being played shows all of it with one tap each, and Next scene moves on and shows the next map.

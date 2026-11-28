@@ -490,6 +490,26 @@ try {
   await eventually(async () => (await aliceMap.getByRole("button", { name: "Wren Ashdown, acting now" }).count()) === 1, "and Wren's on hers");
   await shot(alice.page, "alice-map-turn");
   await shot(display, "display-map-turn");
+  // Layouts: the map beside the turns (the default), the map alone, or the party and rolls with no map.
+  const displayBox = await display.locator(".display-map .map-box").boundingBox();
+  check(displayBox.height >= 700 && displayBox.width > 800, `the map fills the display's height beside the turn order (${Math.round(displayBox.width)} by ${Math.round(displayBox.height)})`);
+  check(/Round 1/.test(await display.getByRole("complementary", { name: "Turns and party" }).innerText()), "with the round and party in the side panel");
+  await display.mouse.move(640, 300);
+  await display.getByRole("group", { name: "Layout" }).getByRole("button", { name: "Map", exact: true }).click();
+  await eventually(async () => (await display.getByRole("complementary", { name: "Turns and party" }).count()) === 0, "Map alone gives the map the whole screen");
+  const full = await display.locator(".display-map .map-box").boundingBox();
+  check(full.width >= 1270 && full.height >= 700, `edge to edge (${Math.round(full.width)} by ${Math.round(full.height)})`);
+  await shot(display, "display-layout-map");
+  await display.waitForTimeout(3500);
+  check((await display.locator(".display-controls").evaluate((el) => getComputedStyle(el).opacity)) === "0", "the display's controls fade when the pointer rests");
+  await display.reload();
+  await display.locator(".display-map .map-surface").waitFor();
+  check((await display.getByRole("complementary", { name: "Turns and party" }).count()) === 0, "and the layout is kept after a reload");
+  await display.mouse.move(600, 300);
+  await display.getByRole("group", { name: "Layout" }).getByRole("button", { name: "Party and rolls" }).click();
+  await eventually(async () => (await display.locator(".display-map").count()) === 0 && (await display.getByRole("heading", { name: "Wren Ashdown" }).count()) === 1, "Party and rolls shows the party with no map");
+  await display.getByRole("group", { name: "Layout" }).getByRole("button", { name: "Map and turns" }).click();
+  await display.locator(".display-map .map-surface").waitFor();
   await openSheet(alice.page);
   await dm.page.getByRole("region", { name: "Combat" }).getByRole("button", { name: "End combat" }).click();
   await dm.page.getByRole("button", { name: "End combat" }).first().click();

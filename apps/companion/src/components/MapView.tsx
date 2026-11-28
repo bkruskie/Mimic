@@ -35,6 +35,8 @@ interface Props {
   lights?: { id: string; x: number; y: number; radius: number }[];
   /** With the light tool, a tap on a cell. */
   onLight?: (x: number, y: number) => void;
+  /** Zoom buttons under the map. Off for the table display, which always fits the map to the screen. */
+  zoomControls?: boolean;
   /** The token whose turn it is. */
   activeTokenId?: string | null;
   /** Fit the whole map in the box instead of its width (the table display). */
@@ -42,7 +44,7 @@ interface Props {
   label: string;
 }
 
-export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove = () => false, onMove, onPaint, onDoor, walls, doors, pins, onPin, seen, lights, onLight, activeTokenId = null, fit = "width", label }: Props) {
+export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove = () => false, onMove, onPaint, onDoor, walls, doors, pins, onPin, seen, lights, onLight, zoomControls = true, activeTokenId = null, fit = "width", label }: Props) {
   const [ruler, setRuler] = useState<{ from: { x: number; y: number }; to: { x: number; y: number } } | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const surface = useRef<HTMLDivElement>(null);
@@ -258,6 +260,7 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
           })}
         </div>
       </div>
+      {zoomControls && (
       <div className="row map-zoom">
         {ruler && (
           <span className="ruler-label" role="status">
@@ -272,6 +275,7 @@ export function MapView({ map, tiles, tokens, revealed, tool = "view", canMove =
           +
         </button>
       </div>
+      )}
     </div>
   );
 }
